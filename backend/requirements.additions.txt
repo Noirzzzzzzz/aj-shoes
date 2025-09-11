@@ -1,0 +1,3 @@
+# Module 5 additions
+Pillow>=10.4.0
+requests>=2.32.3

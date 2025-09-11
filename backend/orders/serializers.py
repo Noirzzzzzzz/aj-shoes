@@ -1,8 +1,9 @@
 # orders/serializers.py
 from rest_framework import serializers
-from .models import Address, Cart, CartItem, Order, OrderItem, Favorite, Review, PaymentMethod, OrderPayment
+from django.utils import timezone
+from .models import Address, Cart, CartItem, Order, OrderItem, Favorite, Review, PaymentConfig
 from catalog.serializers import VariantSerializer
-from catalog.models import Product  # ใช้สร้าง ProductBriefSerializer
+from catalog.models import Product
 from coupons.models import Coupon
 
 
@@ -22,12 +23,10 @@ class ProductBriefSerializer(serializers.ModelSerializer):
         - obj.productimage_set (default related_name)
         และ map ให้อยู่ในรูปแบบ [{image_url, is_cover}] พร้อม full URL
         """
-        # หารายการรูปจากความสัมพันธ์ที่หาเจอชื่อแรกที่มีอยู่จริง
         rel_qs = None
         for attr in ("images", "product_images", "productimage_set"):
             rel = getattr(obj, attr, None)
             if rel is not None:
-                # ถ้าเป็น RelatedManager จะมี .all()
                 rel_qs = list(rel.all()) if hasattr(rel, "all") else list(rel)
                 if rel_qs:
                     break
@@ -36,7 +35,6 @@ class ProductBriefSerializer(serializers.ModelSerializer):
 
         out = []
         for im in rel_qs:
-            # รองรับหลายรูปแบบของฟิลด์เก็บรูป
             url = getattr(im, "image_url", None)
             if not url:
                 url = getattr(im, "url", None)
@@ -45,7 +43,6 @@ class ProductBriefSerializer(serializers.ModelSerializer):
                 if hasattr(img_field, "url"):
                     url = img_field.url
             if not url:
-                # ลองหาจาก field อื่นๆ
                 for field_name in ['file', 'photo', 'picture']:
                     field_val = getattr(im, field_name, None)
                     if field_val and hasattr(field_val, 'url'):
@@ -53,17 +50,13 @@ class ProductBriefSerializer(serializers.ModelSerializer):
                         break
                         
             if not url:
-                # ไม่มี url ก็ข้าม
                 continue
 
-            # แปลง relative URL เป็น full URL
             if url.startswith('/'):
-                # ใช้ request context เพื่อสร้าง full URL
                 request = self.context.get('request')
                 if request:
                     url = request.build_absolute_uri(url)
                 else:
-                    # fallback: ใช้ domain จาก settings หรือ hardcode
                     from django.conf import settings
                     domain = getattr(settings, 'SITE_URL', 'http://localhost:8000')
                     url = domain.rstrip('/') + url
@@ -75,6 +68,23 @@ class ProductBriefSerializer(serializers.ModelSerializer):
                 }
             )
         return out
+
+
+# ---------- Payment Configuration ----------
+class PaymentConfigSerializer(serializers.ModelSerializer):
+    qr_code_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentConfig
+        fields = ["id", "bank_name", "account_name", "account_number", "qr_code_url"]
+
+    def get_qr_code_url(self, obj):
+        if obj.qr_code_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.qr_code_image.url)
+            return obj.qr_code_image.url
+        return None
 
 
 # ---------- Address ----------
@@ -147,51 +157,42 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True)
+    items = OrderItemSerializer(many=True, read_only=True)
+    payment_deadline_formatted = serializers.SerializerMethodField()
+    time_remaining = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+    payment_slip_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
-        fields = ["id", "status", "shipping_carrier", "shipping_cost", "coupon", "total", "items", "created_at"]
+        fields = [
+            "id", "status", "shipping_carrier", "shipping_cost", "coupon", "total", 
+            "items", "created_at", "payment_deadline", "payment_deadline_formatted", 
+            "time_remaining", "is_expired", "payment_slip_url"
+        ]
 
-
-# ---------- Payment ----------
-class PaymentMethodSerializer(serializers.ModelSerializer):
-    qr_code_image = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = PaymentMethod
-        fields = ["id", "name", "bank_name", "account_name", "account_number", "qr_code_image"]
-    
-    def get_qr_code_image(self, obj):
-        if obj.qr_code_image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.qr_code_image.url)
-            return obj.qr_code_image.url
+    def get_payment_deadline_formatted(self, obj):
+        if obj.payment_deadline:
+            return obj.payment_deadline.strftime("%d/%m/%Y, %H:%M:%S")
         return None
 
-class PaymentInfoSerializer(serializers.ModelSerializer):
-    qr_code_image = serializers.CharField(source="payment_method.qr_code_image.url", read_only=True)
-    bank_name = serializers.CharField(source="payment_method.bank_name", read_only=True)
-    account_name = serializers.CharField(source="payment_method.account_name", read_only=True)
-    account_number = serializers.CharField(source="payment_method.account_number", read_only=True)
-    
-    class Meta:
-        model = OrderPayment
-        fields = ["id", "total_amount", "expires_at", "qr_code_image", "bank_name", "account_name", "account_number"]
+    def get_time_remaining(self, obj):
+        if obj.payment_deadline and not obj.is_payment_expired:
+            diff = obj.payment_deadline - timezone.now()
+            total_seconds = int(diff.total_seconds())
+            if total_seconds > 0:
+                minutes = total_seconds // 60
+                seconds = total_seconds % 60
+                return f"{minutes}:{seconds:02d}"
+        return "00:00"
 
-class PaymentSlipUploadSerializer(serializers.Serializer):
-    order_id = serializers.IntegerField()
-    slip = serializers.ImageField()
-    
-    def validate_order_id(self, value):
-        user = self.context['request'].user
-        try:
-            payment = OrderPayment.objects.get(order_id=value, order__user=user)
-            if payment.status != 'pending':
-                raise serializers.ValidationError("Payment slip already uploaded or verified.")
-            if payment.is_expired():
-                raise serializers.ValidationError("Payment has expired.")
-            return value
-        except OrderPayment.DoesNotExist:
-            raise serializers.ValidationError("Invalid order or not found.")
+    def get_is_expired(self, obj):
+        return obj.is_payment_expired
+
+    def get_payment_slip_url(self, obj):
+        if obj.payment_slip:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.payment_slip.url)
+            return obj.payment_slip.url
+        return None

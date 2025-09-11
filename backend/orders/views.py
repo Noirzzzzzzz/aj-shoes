@@ -1,18 +1,16 @@
-# orders/views.py - Complete file with session-based checkout
+# orders/views.py
 from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from django.core.files.base import ContentFile
-import base64
 
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from .models import Address, Cart, CartItem, Order, OrderItem, Favorite, Review, PaymentMethod, OrderPayment
+from .models import Address, Cart, CartItem, Order, OrderItem, Favorite, Review, PaymentConfig
 from .serializers import (
     AddressSerializer,
     CartSerializer,
@@ -20,8 +18,7 @@ from .serializers import (
     OrderSerializer,
     FavoriteSerializer,
     ReviewSerializer,
-    PaymentInfoSerializer,
-    PaymentSlipUploadSerializer,
+    PaymentConfigSerializer,
 )
 
 User = get_user_model()
@@ -30,27 +27,6 @@ User = get_user_model()
 def _ensure_cart(user):
     cart, _ = Cart.objects.get_or_create(user=user)
     return cart
-
-
-def _ensure_payment_method():
-    """สร้าง PaymentMethod ตัวอย่างถ้ายังไม่มี"""
-    payment_method = PaymentMethod.objects.filter(is_active=True).first()
-    
-    if not payment_method:
-        # สร้างรูป QR ตัวอย่าง (1x1 pixel PNG)
-        sample_qr_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9yF7aYAAAAASUVORK5CYII="
-        qr_content = ContentFile(base64.b64decode(sample_qr_data), name="default_qr.png")
-        
-        payment_method = PaymentMethod.objects.create(
-            name="PromptPay QR Code",
-            bank_name="PromptPay",
-            account_name="AJ Shoes Store",
-            account_number="0912345678",
-            qr_code_image=qr_content,
-            is_active=True
-        )
-    
-    return payment_method
 
 
 class AddressViewSet(viewsets.ModelViewSet):
@@ -93,7 +69,7 @@ class CartViewSet(viewsets.ViewSet):
             item.save()
             item.refresh_from_db()
 
-        return Response(CartItemSerializer(item).data, status=status.HTTP_201_CREATED)
+        return Response(CartItemSerializer(item, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     # PATCH /api/orders/cart/<pk>/
     def partial_update(self, request, pk=None):
@@ -104,7 +80,7 @@ class CartViewSet(viewsets.ViewSet):
             qty = 1
         item.quantity = qty
         item.save()
-        return Response(CartItemSerializer(item).data)
+        return Response(CartItemSerializer(item, context={'request': request}).data)
 
     # DELETE /api/orders/cart/<pk>/
     def destroy(self, request, pk=None):
@@ -118,24 +94,22 @@ class CartViewSet(viewsets.ViewSet):
     def apply_coupon(self, request):
         cart = _ensure_cart(request.user)
         serializer = CartSerializer(
-            cart, data={"coupon_code": request.data.get("code", "")}, partial=True, context={'request': request}
+            cart, data={"coupon_code": request.data.get("code", "")}, partial=True
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(CartSerializer(cart, context={'request': request}).data)
 
-    # POST /api/orders/cart/checkout/ - Create payment info only, no Order yet
+    # POST /api/orders/cart/checkout/
     @action(detail=False, methods=["post"])
     def checkout(self, request):
         cart = _ensure_cart(request.user)
 
-        # --- validate address ---
         address_id = request.data.get("address_id")
         if not address_id:
             return Response({"detail": "address_id is required"}, status=status.HTTP_400_BAD_REQUEST)
         address = get_object_or_404(Address, id=address_id, user=request.user)
 
-        # --- รับ cart_item_ids ---
         item_ids = request.data.get("cart_item_ids", [])
         if item_ids in ("", None):
             item_ids = []
@@ -159,248 +133,140 @@ class CartViewSet(viewsets.ViewSet):
         if not qs.exists():
             return Response({"detail": "No items selected."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ตรวจสอบสต็อก
+        # Calculate total before creating order
+        total = 0.0
         for it in qs:
             if it.variant.stock < it.quantity:
-                return Response({
-                    "detail": f"Insufficient stock for {it.product.name_en} (variant {it.variant.id})."
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-        # คำนวณราคา
-        total = 0.0
-        shipping_cost = 50.0
-        
-        for it in qs:
+                raise ValidationError(
+                    {"detail": f"Insufficient stock for {it.product.name} (variant {it.variant.id})."}
+                )
             price = float(it.product.sale_price)
             total += price * it.quantity
 
-        # คูปอง
+        # Apply coupon discount
+        shipping_cost = 50
         if cart.coupon:
             c = cart.coupon
             if c.discount_type == "percent":
-                if total >= float(c.min_spend):
-                    total = total * (100 - c.percent_off) / 100
+                total = total * (100 - c.percent_off) / 100
             elif c.discount_type == "free_shipping":
-                if total >= float(c.min_spend):
-                    shipping_cost = 0
+                shipping_cost = 0
 
-        final_total = round(total + shipping_cost, 2)
+        final_total = total + shipping_cost
 
-        # ตรวจสอบและสร้าง PaymentMethod
-        try:
-            payment_method = _ensure_payment_method()
-        except Exception as e:
-            return Response({
-                "detail": f"Failed to setup payment method: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        with transaction.atomic():
+            # Create order in PENDING_PAYMENT status
+            order = Order.objects.create(
+                user=request.user,
+                address=address,
+                shipping_carrier=request.data.get("carrier", "Kerry"),
+                shipping_cost=shipping_cost,
+                coupon=cart.coupon,
+                total=round(final_total, 2),
+                status=Order.Status.PENDING_PAYMENT,
+            )
 
-        # สร้างข้อมูล payment_info โดยไม่สร้าง Order
-        # เก็บข้อมูลใน session
-        request.session['pending_checkout'] = {
-            'user_id': request.user.id,
-            'address_id': address.id,
-            'carrier': request.data.get("carrier", "Kerry"),
-            'shipping_cost': shipping_cost,
-            'coupon_id': cart.coupon.id if cart.coupon else None,
-            'total': final_total,
-            'cart_item_ids': item_ids,
-            'created_at': timezone.now().isoformat(),
-            'expires_at': (timezone.now() + timezone.timedelta(hours=24)).isoformat()
-        }
-
-        # สร้าง temporary ID สำหรับ payment
-        temp_payment_id = f"temp_{request.user.id}_{int(timezone.now().timestamp())}"
-
-        payment_info = {
-            "id": temp_payment_id,
-            "total_amount": final_total,
-            "expires_at": (timezone.now() + timezone.timedelta(hours=24)).isoformat(),
-            "qr_code_image": request.build_absolute_uri(payment_method.qr_code_image.url) if payment_method.qr_code_image else None,
-            "bank_name": payment_method.bank_name,
-            "account_name": payment_method.account_name,
-            "account_number": payment_method.account_number,
-        }
-        
-        return Response({
-            "pending_checkout": True,
-            "payment_info": payment_info,
-            "cart_item_ids": item_ids
-        }, status=status.HTTP_201_CREATED)
-
-    # POST /api/orders/upload-payment-slip/ - Create Order after slip upload
-    @action(detail=False, methods=["post"])
-    def upload_payment_slip(self, request):
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        temp_payment_id = request.data.get('order_id')
-        slip_file = request.FILES.get('slip')
-        
-        logger.info(f"Upload payment slip called - User: {request.user.id}, temp_id: {temp_payment_id}, file: {slip_file.name if slip_file else 'None'}")
-        
-        if not temp_payment_id or not slip_file:
-            logger.error("Missing order_id or slip file")
-            return Response({"detail": "order_id and slip are required."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # ตรวจสอบ session data
-        pending_checkout = request.session.get('pending_checkout')
-        logger.info(f"Session data: {pending_checkout}")
-        
-        if not pending_checkout:
-            logger.error("No pending checkout in session")
-            return Response({"detail": "No pending checkout found. Please try checkout again."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # ง่ายขึ้น - ไม่เช็ค expiry ก่อน
-            logger.info("Creating order...")
-            
-            payment_method = _ensure_payment_method()
-            logger.info(f"Payment method: {payment_method}")
-            
-            with transaction.atomic():
-                # สร้าง Order จริงตอนนี้
-                cart = _ensure_cart(request.user)
-                logger.info(f"Cart: {cart.id}")
-                
-                # ตรวจสอบ address
-                address_id = pending_checkout.get('address_id')
-                logger.info(f"Looking for address: {address_id}")
-                
-                try:
-                    address = Address.objects.get(id=address_id, user=request.user)
-                    logger.info(f"Address found: {address}")
-                except Address.DoesNotExist:
-                    logger.error(f"Address {address_id} not found")
-                    return Response({"detail": "Selected address no longer exists."}, status=status.HTTP_400_BAD_REQUEST)
-                
-                # สร้าง Order
-                order_data = {
-                    'user': request.user,
-                    'address': address,
-                    'shipping_carrier': pending_checkout.get('carrier', 'Kerry'),
-                    'shipping_cost': pending_checkout.get('shipping_cost', 50),
-                    'total': pending_checkout.get('total', 0),
-                }
-                
-                # เช็ค coupon
-                coupon_id = pending_checkout.get('coupon_id')
-                if coupon_id:
-                    try:
-                        from coupons.models import Coupon
-                        coupon = Coupon.objects.get(id=coupon_id)
-                        order_data['coupon'] = coupon
-                        logger.info(f"Coupon found: {coupon}")
-                    except Coupon.DoesNotExist:
-                        logger.warning(f"Coupon {coupon_id} not found, proceeding without")
-                
-                logger.info(f"Creating order with data: {order_data}")
-                order = Order.objects.create(**order_data)
-                logger.info(f"Order created: {order.id}")
-
-                # สร้าง OrderItems
-                cart_item_ids = pending_checkout.get('cart_item_ids', [])
-                logger.info(f"Looking for cart items: {cart_item_ids}")
-                
-                cart_items = CartItem.objects.filter(
-                    cart=cart, 
-                    id__in=cart_item_ids
-                ).select_related("product", "variant")
-                
-                logger.info(f"Found cart items: {cart_items.count()}")
-                
-                if not cart_items.exists():
-                    logger.error("No cart items found")
-                    return Response({"detail": "Cart items no longer exist."}, status=status.HTTP_400_BAD_REQUEST)
-                
-                for it in cart_items:
-                    logger.info(f"Processing item: {it.product.name_en}, stock: {it.variant.stock}, qty: {it.quantity}")
-                    
-                    # เช็คสต็อก
-                    if it.variant.stock < it.quantity:
-                        logger.error(f"Insufficient stock for {it.product.name_en}")
-                        raise ValidationError(f"Insufficient stock for {it.product.name_en}")
-
-                    price = float(it.product.sale_price)
-                    order_item = OrderItem.objects.create(
-                        order=order,
-                        product=it.product,
-                        variant=it.variant,
-                        price=price,
-                        quantity=it.quantity,
-                    )
-                    logger.info(f"OrderItem created: {order_item.id}")
-
-                    # ตัดสต็อก
-                    it.variant.stock = F("stock") - it.quantity
-                    it.variant.save(update_fields=["stock"])
-                    logger.info(f"Stock updated for variant {it.variant.id}")
-
-                # สร้าง Payment
-                payment = OrderPayment.objects.create(
+            # Create order items but don't reduce stock yet
+            for it in qs:
+                price = float(it.product.sale_price)
+                OrderItem.objects.create(
                     order=order,
-                    payment_method=payment_method,
-                    total_amount=pending_checkout.get('total', 0),
-                    status='uploaded',
-                    payment_slip=slip_file,
-                    uploaded_at=timezone.now(),
-                    expires_at=timezone.now() + timezone.timedelta(hours=24)
+                    product=it.product,
+                    variant=it.variant,
+                    price=price,
+                    quantity=it.quantity,
                 )
-                logger.info(f"Payment created: {payment.id}")
 
-                # อัปเดต coupon usage
-                if coupon_id:
-                    try:
-                        from coupons.models import Coupon
-                        coupon = Coupon.objects.get(id=coupon_id)
-                        coupon.uses_count = F("uses_count") + 1
-                        coupon.save(update_fields=["uses_count"])
-                        logger.info(f"Coupon usage updated: {coupon.code}")
-                    except Coupon.DoesNotExist:
-                        logger.warning(f"Coupon {coupon_id} not found for usage update")
+            # Update coupon usage
+            if cart.coupon:
+                c = cart.coupon
+                c.uses_count = F("uses_count") + 1
+                c.save(update_fields=["uses_count"])
 
-                # ลบ cart items
-                deleted_count = cart_items.count()
-                cart_items.delete()
-                logger.info(f"Deleted {deleted_count} cart items")
-                
-                # ล้าง coupon ถ้าไม่เหลือ items
-                if not cart.items.exists():
-                    cart.coupon = None
-                    cart.save(update_fields=["coupon"])
-                    logger.info("Cart coupon cleared")
+        # Return order with payment config for frontend
+        payment_config = PaymentConfig.objects.filter(is_active=True).first()
+        response_data = {
+            "order": OrderSerializer(order, context={'request': request}).data,
+            "payment_config": PaymentConfigSerializer(payment_config, context={'request': request}).data if payment_config else None,
+            "requires_payment": True
+        }
 
-                # ลบ session data
-                if 'pending_checkout' in request.session:
-                    del request.session['pending_checkout']
-                    logger.info("Session data cleared")
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
-            logger.info("Order creation completed successfully")
-            return Response({
-                "detail": "Payment slip uploaded successfully. Order created and awaiting admin verification.",
-                "order_id": order.id
-            }, status=status.HTTP_200_OK)
 
-        except Exception as e:
-            logger.error(f"Error creating order: {str(e)}", exc_info=True)
-            return Response({
-                "detail": f"Failed to create order: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class OrderViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
 
-    # เก็บไว้เผื่อต้องการ (สำหรับ manual clear)
-    @action(detail=False, methods=["post"])
-    def clear_cart_items(self, request):
-        cart = _ensure_cart(request.user)
-        item_ids = request.data.get("cart_item_ids", [])
+    # GET /api/orders/<order_id>/
+    def retrieve(self, request, pk=None):
+        order = get_object_or_404(Order, pk=pk, user=request.user)
+        return Response(OrderSerializer(order, context={'request': request}).data)
+
+    # POST /api/orders/<order_id>/upload-payment/
+    @action(detail=True, methods=["post"])
+    def upload_payment(self, request, pk=None):
+        order = get_object_or_404(Order, pk=pk, user=request.user)
         
-        if item_ids:
-            CartItem.objects.filter(cart=cart, id__in=item_ids).delete()
-            
-            # ถ้าไม่เหลือ item ให้ล้างคูปอง
-            if not cart.items.exists():
-                cart.coupon = None
-                cart.save(update_fields=["coupon"])
-                
-        return Response({"detail": "Cart items cleared."}, status=status.HTTP_200_OK)
+        if order.status != Order.Status.PENDING_PAYMENT:
+            return Response(
+                {"detail": "Order is not awaiting payment"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if order.is_payment_expired:
+            return Response(
+                {"detail": "Payment deadline has expired"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment_slip = request.FILES.get('payment_slip')
+        if not payment_slip:
+            return Response(
+                {"detail": "Payment slip is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.payment_slip = payment_slip
+        order.save()
+
+        return Response(
+            {"detail": "Payment slip uploaded successfully. Awaiting admin verification."},
+            status=status.HTTP_200_OK
+        )
+
+    # POST /api/orders/<order_id>/cancel/
+    @action(detail=True, methods=["post"])
+    def cancel_order(self, request, pk=None):
+        order = get_object_or_404(Order, pk=pk, user=request.user)
+        
+        if order.status != Order.Status.PENDING_PAYMENT:
+            return Response(
+                {"detail": "Order cannot be cancelled"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            # Restore cart items
+            cart = _ensure_cart(request.user)
+            for order_item in order.items.all():
+                cart_item, created = CartItem.objects.get_or_create(
+                    cart=cart,
+                    product=order_item.product,
+                    variant=order_item.variant,
+                    defaults={"quantity": order_item.quantity}
+                )
+                if not created:
+                    cart_item.quantity = F("quantity") + order_item.quantity
+                    cart_item.save()
+
+            # Cancel the order
+            order.status = Order.Status.CANCELLED
+            order.save()
+
+        return Response(
+            {"detail": "Order cancelled successfully. Items restored to cart."},
+            status=status.HTTP_200_OK
+        )
 
 
 class FavoriteViewSet(viewsets.ModelViewSet):
@@ -444,6 +310,17 @@ class MyOrdersView(generics.ListAPIView):
     def get_queryset(self):
         return (
             Order.objects.filter(user=self.request.user)
-            .prefetch_related("items", "payment")
+            .exclude(status=Order.Status.PENDING_PAYMENT)  # ซ่อน pending payment orders
+            # ไม่ต้อง exclude cancelled เพราะ cancelled orders จะถูกลบออกจากฐานข้อมูลแล้ว
+            .prefetch_related("items")
             .order_by("-created_at")
         )
+
+
+class PaymentConfigView(generics.RetrieveAPIView):
+    """Get active payment configuration"""
+    serializer_class = PaymentConfigSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return PaymentConfig.objects.filter(is_active=True).first()

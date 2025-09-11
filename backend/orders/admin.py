@@ -1,4 +1,4 @@
-# orders/admin.py - รวม Payment Admin
+# orders/admin.py
 from django.contrib import admin
 from django.contrib.admin.models import LogEntry, CHANGE
 from django.contrib.contenttypes.models import ContentType
@@ -13,8 +13,7 @@ from .models import (
     OrderItem,
     Review,
     Favorite,
-    PaymentMethod,  # เพิ่ม
-    OrderPayment,   # เพิ่ม
+    PaymentConfig,
 )
 
 @admin.register(Address)
@@ -60,91 +59,95 @@ class FavoriteAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "product", "created_at")
     search_fields = ("user__username", "product__name")
 
-# ===== เพิ่ม Payment Admin =====
-@admin.register(PaymentMethod)
-class PaymentMethodAdmin(admin.ModelAdmin):
-    list_display = ("name", "bank_name", "account_name", "account_number", "is_active", "qr_preview")
+# New Payment Configuration Admin
+@admin.register(PaymentConfig)
+class PaymentConfigAdmin(admin.ModelAdmin):
+    list_display = ("bank_name", "account_name", "account_number", "is_active", "created_at")
     list_filter = ("is_active", "bank_name")
-    search_fields = ("name", "bank_name", "account_name", "account_number")
-    
+    readonly_fields = ("qr_preview",)
+    fields = ("bank_name", "account_name", "account_number", "qr_code_image", "qr_preview", "is_active")
+
     def qr_preview(self, obj):
         if obj.qr_code_image:
             return format_html(
-                '<img src="{}" width="50" height="50" />',
+                '<img src="{}" style="max-width: 200px; max-height: 200px;" />',
                 obj.qr_code_image.url
             )
-        return "No image"
-    qr_preview.short_description = "QR Preview"
+        return "No QR code uploaded"
+    qr_preview.short_description = "QR Code Preview"
 
-@admin.action(description="Verify selected payments")
-def verify_payments(modeladmin, request, queryset):
-    updated = queryset.filter(status="uploaded").update(
-        status="verified",
-        verified_by=request.user,
-        verified_at=timezone.now()
-    )
-    modeladmin.message_user(request, f"Verified {updated} payment(s).")
-
-@admin.action(description="Reject selected payments")
-def reject_payments(modeladmin, request, queryset):
-    updated = queryset.filter(status="uploaded").update(
-        status="rejected",
-        verified_by=request.user,
-        verified_at=timezone.now()
-    )
-    modeladmin.message_user(request, f"Rejected {updated} payment(s).")
-
-@admin.register(OrderPayment)
-class OrderPaymentAdmin(admin.ModelAdmin):
-    list_display = ("order_id", "order_user", "total_amount", "status", "payment_slip_preview", "uploaded_at", "is_expired_display")
-    list_filter = ("status", "payment_method", "created_at", "uploaded_at")
-    search_fields = ("order__id", "order__user__username", "order__user__email")
-    readonly_fields = ("order", "total_amount", "created_at", "updated_at", "uploaded_at")
-    actions = [verify_payments, reject_payments]
-    
-    def order_id(self, obj):
-        return f"#{obj.order.id}"
-    order_id.short_description = "Order"
-    
-    def order_user(self, obj):
-        return obj.order.user.username
-    order_user.short_description = "Customer"
-    
-    def payment_slip_preview(self, obj):
-        if obj.payment_slip:
-            return format_html(
-                '<a href="{}" target="_blank"><img src="{}" width="50" height="50" /></a>',
-                obj.payment_slip.url, obj.payment_slip.url
-            )
-        return "No slip uploaded"
-    payment_slip_preview.short_description = "Payment Slip"
-    
-    def is_expired_display(self, obj):
-        if obj.is_expired():
-            return format_html('<span style="color: red;">Expired</span>')
-        return "Active"
-    is_expired_display.short_description = "Status"
-
-# ---------- Orders พร้อม Action Approve / Delivered ----------
+# ---------- Orders with Payment Management ----------
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     readonly_fields = ("product", "variant", "price", "quantity")
 
-@admin.action(description="Approve (mark as shipped)")
-def approve_orders(modeladmin, request, queryset):
-    to_update = queryset.filter(status="pending")
-    count = to_update.update(status="shipped")
+@admin.action(description="Approve payment and mark as shipped")
+def approve_payment_and_ship(modeladmin, request, queryset):
+    """Approve payment and move to shipped status"""
+    to_update = queryset.filter(status="pending_payment")
+    updated_orders = []
+    
     for order in to_update:
+        order.status = "shipped"
+        order.payment_verified_at = timezone.now()
+        order.save()
+        updated_orders.append(order)
+        
+        # Log the action
         LogEntry.objects.log_action(
             user_id=request.user.id,
             content_type_id=ContentType.objects.get_for_model(order).pk,
             object_id=str(order.pk),
             object_repr=f"Order #{order.pk}",
             action_flag=CHANGE,
-            change_message="Admin approved order (marked as shipped).",
+            change_message="Admin approved payment and marked as shipped.",
         )
-    modeladmin.message_user(request, f"Approved {count} order(s).")
+    
+    count = len(updated_orders)
+    modeladmin.message_user(request, f"Approved payment and shipped {count} order(s).")
+
+@admin.action(description="Reject payment and delete order")
+def reject_payment(modeladmin, request, queryset):
+    """Reject payment and delete order completely - will not appear in order history"""
+    from .models import Cart, CartItem
+    
+    to_delete = queryset.filter(status="pending_payment")
+    count = 0
+    
+    for order in to_delete:
+        # เก็บข้อมูล order items ก่อนลบ
+        order_items_backup = []
+        for order_item in order.items.all():
+            order_items_backup.append({
+                'product_id': order_item.product_id,
+                'variant_id': order_item.variant_id,
+                'quantity': order_item.quantity
+            })
+        
+        # คืนสินค้ากลับ cart ด้วยจำนวนเดิม
+        cart, _ = Cart.objects.get_or_create(user=order.user)
+        for item_backup in order_items_backup:
+            # ลบ cart item เดิมก่อน (ถ้ามี)
+            CartItem.objects.filter(
+                cart=cart,
+                product_id=item_backup['product_id'],
+                variant_id=item_backup['variant_id']
+            ).delete()
+            
+            # สร้าง cart item ใหม่ด้วยจำนวนเดิม
+            CartItem.objects.create(
+                cart=cart,
+                product_id=item_backup['product_id'],
+                variant_id=item_backup['variant_id'],
+                quantity=item_backup['quantity']
+            )
+        
+        # ลบ order ออกจากฐานข้อมูลทั้งหมด
+        order.delete()
+        count += 1
+    
+    modeladmin.message_user(request, f"Deleted {count} order(s) completely. Items restored to customers' carts.")
 
 @admin.action(description="Mark as delivered")
 def mark_delivered(modeladmin, request, queryset):
@@ -154,28 +157,45 @@ def mark_delivered(modeladmin, request, queryset):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "status", "shipping_carrier", "shipping_cost", "total", "payment_status", "created_at")
-    list_filter = ("status", "shipping_carrier", "created_at")
+    list_display = (
+        "id", "user", "status", "total", "payment_deadline", 
+        "payment_slip_preview", "shipping_carrier", "created_at"
+    )
+    list_filter = ("status", "shipping_carrier", "created_at", "payment_verified_at")
     search_fields = ("id", "user__username", "user__email")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
-    readonly_fields = ("user", "created_at")
+    readonly_fields = ("user", "created_at", "payment_deadline", "payment_slip_preview", "is_expired")
     inlines = [OrderItemInline]
-    actions = [approve_orders, mark_delivered]
-    
-    def payment_status(self, obj):
-        try:
-            payment = obj.payment
-            color = {
-                'pending': 'orange',
-                'uploaded': 'blue', 
-                'verified': 'green',
-                'rejected': 'red'
-            }.get(payment.status, 'gray')
+    actions = [approve_payment_and_ship, reject_payment, mark_delivered]
+
+    def payment_slip_preview(self, obj):
+        if obj.payment_slip:
             return format_html(
-                '<span style="color: {};">{}</span>',
-                color, payment.get_status_display()
+                '<a href="{}" target="_blank"><img src="{}" style="max-width: 100px; max-height: 100px;" /></a>',
+                obj.payment_slip.url,
+                obj.payment_slip.url
             )
-        except:
-            return "No payment"
-    payment_status.short_description = "Payment"
+        return "No payment slip"
+    payment_slip_preview.short_description = "Payment Slip"
+
+    def is_expired(self, obj):
+        if obj.is_payment_expired and obj.status == "pending_payment":
+            return format_html('<span style="color: red;">Expired</span>')
+        return "Active"
+    is_expired.short_description = "Payment Status"
+
+    fieldsets = (
+        ("Order Information", {
+            "fields": ("user", "status", "total", "created_at")
+        }),
+        ("Shipping", {
+            "fields": ("address", "shipping_carrier", "shipping_cost")
+        }),
+        ("Payment", {
+            "fields": ("payment_deadline", "is_expired", "payment_slip", "payment_slip_preview", "payment_verified_at")
+        }),
+        ("Discount", {
+            "fields": ("coupon",)
+        }),
+    )

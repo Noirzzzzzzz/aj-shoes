@@ -1,69 +1,267 @@
-// src/pages/Cart.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import Protected from "@/components/Protected";
 import api from "@/api/client";
 import { fmt } from "@/utils/format";
-import { useTranslation } from "react-i18next";
 
-type Item = {
-  id: number;                 // cart item id
-  product: number;
-  variant: number;
+// Types based on your serializers
+interface Item {
+  id: number;
   quantity: number;
   product_detail: {
-    id: number;
     name_en: string;
-    base_price: string;
-    sale_price: string;
-    sale_percent: number;
-    images: { image_url: string; is_cover: boolean }[];
+    sale_price: number;
+    images: Array<{
+      image_url: string;
+      is_cover: boolean;
+    }>;
   };
-  variant_detail?: {
-    color?: string;
-    color_name?: string;
+  variant_detail: {
     color_label?: string;
-    size?: string | number;
+    color_name?: string;
+    color?: string;
     size_label?: string;
-    size_eu?: string | number;
-    size_us?: string | number;
-    size_cm?: string | number;
-    stock?: number;
+    size?: string;
+    size_eu?: number;
+    size_us?: number;
+    size_cm?: number;
   };
-};
+}
 
-type Coupon = {
-  id: number;
-  code: string;
-  discount_type: "percent" | "free_shipping";
-  percent_off: number;
-  min_spend: number;
-};
-
-type CartData = {
-  id: number;
-  items: Item[];
-  coupon: Coupon | null;
-};
-
-type Address = {
+interface Address {
   id: number;
   full_name: string;
   phone: string;
   address: string;
   province: string;
   postal_code: string;
-  is_default?: boolean;
-};
+  is_default: boolean;
+}
 
-type PaymentInfo = {
-  id: number;
-  qr_code_image: string;
+interface PaymentConfig {
   bank_name: string;
   account_name: string;
   account_number: string;
-  total_amount: number;
-  expires_at: string;
-};
+  qr_code_url: string;
+}
+
+interface Order {
+  id: number;
+  total: number;
+  status: string;
+  payment_deadline: string;
+}
+
+// Payment Component
+function PaymentRequired({ 
+  order, 
+  paymentConfig, 
+  onPaymentComplete, 
+  onCancel 
+}: {
+  order: Order;
+  paymentConfig: PaymentConfig;
+  onPaymentComplete: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState("");
+  const [isExpired, setIsExpired] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!order || !order.payment_deadline) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const deadline = new Date(order.payment_deadline);
+      const diff = deadline.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setIsExpired(true);
+        setTimeRemaining("00:00");
+        clearInterval(interval);
+      } else {
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [order]);
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      setPaymentSlip(file);
+    }
+  };
+
+  const uploadPaymentSlip = async () => {
+    if (!paymentSlip) {
+      alert('Please select a payment slip image');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('payment_slip', paymentSlip);
+      
+      await api.post(`/api/orders/orders/${order.id}/upload-payment/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      alert('Payment slip uploaded successfully! Please wait for admin verification.');
+      onPaymentComplete();
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      const msg = error?.response?.data?.detail || 'Failed to upload payment slip. Please try again.';
+      alert(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const cancelOrder = async () => {
+    if (!confirm('Are you sure you want to cancel this order? Items will be restored to your cart.')) {
+      return;
+    }
+
+    try {
+      const response = await api.post(`/api/orders/orders/${order.id}/cancel/`);
+      
+      // ปิดหน้าต่าง payment modal ทันที
+      onCancel();
+      
+      // แสดงข้อความสำเร็จ
+      alert('Order cancelled successfully. Items restored to cart.');
+      
+    } catch (error: any) {
+      console.error('Cancel error:', error);
+      
+      // ถึงแม้จะ error ก็ปิดหน้าต่างไปเลย เพราะ order อาจถูกลบแล้ว
+      onCancel();
+      
+      // แสดงข้อความที่เป็นมิตรกว่า
+      alert('Order cancellation processed. Please check your cart.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-zinc-900 rounded-lg p-8 max-w-md w-full border border-zinc-800 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-bold text-white mb-2">Payment Required</h1>
+          <div className="text-emerald-400 text-2xl font-bold">
+            {t('total')}: {fmt.currency(order.total)}
+          </div>
+          <div className="text-sm text-zinc-400 mt-2">
+            Order expires: {new Date(order.payment_deadline).toLocaleString()}
+          </div>
+        </div>
+
+        {/* QR Code */}
+        <div className="bg-white rounded-lg p-2 mb-6">
+          <div className="flex justify-center">
+            <img 
+              src={paymentConfig.qr_code_url} 
+              alt="Payment QR Code"
+              className="w-full h-auto max-w-sm rounded"
+            />
+          </div>
+        </div>
+
+        {/* Payment Details */}
+        <div className="space-y-3 mb-6 text-sm">
+          <div className="flex justify-between">
+            <span className="text-zinc-400">{t('bank')}:</span>
+            <span className="text-white">{paymentConfig.bank_name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-400">{t('account')}:</span>
+            <span className="text-white">{paymentConfig.account_name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-400">{t('number')}:</span>
+            <span className="text-white">{paymentConfig.account_number}</span>
+          </div>
+        </div>
+
+        {/* Timer */}
+        <div className="text-center mb-6">
+          <div className={`text-lg font-mono ${isExpired ? 'text-red-500' : 'text-yellow-400'}`}>
+            Time remaining: {timeRemaining}
+          </div>
+          {isExpired && (
+            <div className="text-red-400 text-sm mt-1">
+              Payment deadline expired
+            </div>
+          )}
+        </div>
+
+        {/* File Upload */}
+        <div className="mb-6">
+          <label className="block text-sm text-zinc-400 mb-2">
+            Upload Payment Slip:
+          </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-emerald-600 file:text-white"
+          />
+          {paymentSlip && (
+            <div className="text-sm text-green-400 mt-1">
+              Selected: {paymentSlip.name}
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-3">
+          <button
+            onClick={uploadPaymentSlip}
+            disabled={uploading || isExpired || !paymentSlip}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:opacity-50 text-white font-medium py-3 rounded transition-colors"
+          >
+            {uploading ? 'Uploading...' : t('upload_payment_slip')}
+          </button>
+          
+          <button
+            onClick={cancelOrder}
+            disabled={uploading}
+            className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white py-3 rounded transition-colors"
+          >
+            {t('cancel_order')} (Order will be cancelled)
+          </button>
+        </div>
+
+        {/* Warning message */}
+        {isExpired && (
+          <div className="mt-4 p-3 bg-red-900/30 border border-red-700 rounded text-red-400 text-sm">
+            Payment deadline has expired. Please cancel this order and place a new one.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Cart() {
   return (
@@ -78,7 +276,6 @@ function CartInner() {
 
   // cart
   const [items, setItems] = useState<Item[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [coupon, setCoupon] = useState("");
   const [shipping, setShipping] = useState(50);
 
@@ -86,38 +283,13 @@ function CartInner() {
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const selectAllRef = useRef<HTMLInputElement | null>(null);
 
-  // totals with coupon calculation
+  // totals
   const chosen = useMemo(() => items.filter((it) => selected[it.id]), [items, selected]);
   const subtotal = useMemo(
     () => chosen.reduce((acc, it) => acc + Number(it.product_detail.sale_price) * it.quantity, 0),
     [chosen]
   );
-  
-  // Calculate discount
-  const { discountAmount, finalShipping, total } = useMemo(() => {
-    let discount = 0;
-    let finalShipping = chosen.length > 0 ? shipping : 0;
-    
-    if (appliedCoupon && subtotal > 0) {
-      if (appliedCoupon.discount_type === "percent") {
-        // Check minimum spend
-        if (subtotal >= appliedCoupon.min_spend) {
-          discount = (subtotal * appliedCoupon.percent_off) / 100;
-        }
-      } else if (appliedCoupon.discount_type === "free_shipping") {
-        if (subtotal >= appliedCoupon.min_spend) {
-          finalShipping = 0;
-        }
-      }
-    }
-    
-    const finalTotal = subtotal - discount + finalShipping;
-    return { 
-      discountAmount: discount, 
-      finalShipping, 
-      total: finalTotal 
-    };
-  }, [subtotal, shipping, chosen.length, appliedCoupon]);
+  const total = useMemo(() => subtotal + (chosen.length > 0 ? shipping : 0), [subtotal, shipping, chosen.length]);
 
   // address + carrier + placing
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -125,30 +297,69 @@ function CartInner() {
   const [selectedCarrier, setSelectedCarrier] = useState<string>("Kerry");
   const [placing, setPlacing] = useState(false);
 
-  // payment
-  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
-  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  // payment state
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
 
   // ---------- helpers ----------
   const getCoverImage = (it: Item) => {
+    console.log("Debug product_detail:", it.product_detail);
+    
     const pd = it.product_detail;
-    if (!pd || !pd.images) return "";
+    if (!pd || !pd.images) {
+      console.log("No product_detail or images found");
+      return "";
+    }
+
     const images = pd.images;
-    if (!Array.isArray(images) || images.length === 0) return "";
+    console.log("Images array:", images);
+    
+    if (!Array.isArray(images) || images.length === 0) {
+      console.log("Images is not array or empty");
+      return "";
+    }
+
+    // หารูป cover ก่อน ถ้าไม่มีใช้รูปแรก
     const coverImage = images.find(img => img.is_cover) || images[0];
-    return coverImage?.image_url || "";
+    console.log("Selected image:", coverImage);
+    
+    if (!coverImage) {
+      return "";
+    }
+
+    // ลองหา URL จากหลายฟิลด์ที่เป็นไปได้
+    const imageUrl = coverImage.image_url;
+    console.log("Final image URL:", imageUrl);
+    
+    return imageUrl || "";
   };
 
   // สร้างข้อความรายละเอียด variant สั้นๆ เช่น "Black • EU 42"
   const getVariantBrief = (it: Item) => {
     const v = it.variant_detail || {};
-    const color = (v.color_label as string) || (v.color_name as string) || (v.color as string) || "";
-    const sizeRaw = v.size_label ?? v.size ?? v.size_eu ?? v.size_us ?? v.size_cm ?? "";
-    const size = sizeRaw !== "" && sizeRaw !== undefined ? ` ${String(sizeRaw)}` : "";
+    const color =
+      (v.color_label as string) ||
+      (v.color_name as string) ||
+      (v.color as string) ||
+      "";
+
+    // เลือกไซส์แบบที่มีค่า
+    const sizeRaw =
+      v.size_label ??
+      v.size ??
+      v.size_eu ??
+      v.size_us ??
+      v.size_cm ??
+      "";
+
+    const size =
+      sizeRaw !== "" && sizeRaw !== undefined ? ` ${String(sizeRaw)}` : "";
 
     const parts: string[] = [];
     if (color) parts.push(color);
     if (size.trim()) {
+      // ใส่ prefix ถ้าระบุชนิดได้จาก key
       let prefix = "";
       if (v.size_eu !== undefined) prefix = "EU";
       else if (v.size_us !== undefined) prefix = "US";
@@ -162,11 +373,10 @@ function CartInner() {
   async function loadCart() {
     try {
       const { data } = await api.get("/api/orders/cart/");
-      const cartData: CartData = data;
-      const list: Item[] = cartData.items || [];
+      console.log("Cart data received:", data);
+      const list: Item[] = data.items || [];
+      console.log("Cart items:", list);
       setItems(list);
-      setAppliedCoupon(cartData.coupon);
-      
       // เริ่มต้น: เลือกทั้งหมด
       const init: Record<number, boolean> = {};
       list.forEach((it) => (init[it.id] = true));
@@ -193,6 +403,7 @@ function CartInner() {
   }
 
   useEffect(() => {
+    console.log("🚀 useEffect triggered - loading cart and addresses");
     loadCart();
     loadAddresses();
   }, []);
@@ -219,31 +430,9 @@ function CartInner() {
   }
 
   async function applyCoupon() {
-    if (!coupon.trim()) {
-      alert("Please enter a coupon code.");
-      return;
-    }
-    
-    try {
-      await api.post("/api/orders/cart/apply-coupon/", { code: coupon });
-      setCoupon("");
-      await loadCart();
-      alert("Coupon applied successfully!");
-    } catch (error: any) {
-      const message = error?.response?.data?.detail || 
-                     error?.response?.data?.non_field_errors?.[0] || 
-                     "Failed to apply coupon. Please check the code.";
-      alert(message);
-    }
-  }
-
-  async function removeCoupon() {
-    try {
-      await api.post("/api/orders/cart/apply-coupon/", { code: "" });
-      await loadCart();
-    } catch (error) {
-      console.error("Failed to remove coupon:", error);
-    }
+    await api.post("/api/orders/cart/apply-coupon/", { code: coupon });
+    setCoupon("");
+    await loadCart();
   }
 
   // ---------- selection helpers ----------
@@ -270,39 +459,27 @@ function CartInner() {
       alert("Select at least 1 item.");
       return;
     }
-    
-    const chosenIds = chosen.map((c) => c.id);
-    
     try {
       setPlacing(true);
       const payload = {
         address_id: selectedAddressId,
         carrier: selectedCarrier || "Kerry",
-        cart_item_ids: chosenIds,
+        cart_item_ids: chosen.map((c) => c.id), // ✅ ส่งเฉพาะที่เลือก
       };
-      
-      // สร้าง order และได้ payment info กลับมา
       const response = await api.post("/api/orders/cart/checkout/", payload);
-      const orderData = response.data;
       
-      if (orderData.payment_info) {
-        // ✅ ลบ cart items หลังจาก checkout สำเร็จ
-        try {
-          await api.post("/api/orders/cart/clear-cart-items/", {
-            cart_item_ids: orderData.cart_item_ids || chosenIds
-          });
-        } catch (clearError) {
-          console.warn("Failed to clear cart items:", clearError);
-          // ไม่ต้อง throw error เพราะ order สำเร็จแล้ว
-        }
-        
-        setPaymentInfo(orderData.payment_info);
+      if (response.data.requires_payment) {
+        // Show payment modal
+        setPaymentOrder(response.data.order);
+        setPaymentConfig(response.data.payment_config);
+        setShowPayment(true);
+      } else {
+        // Old flow - redirect to orders (shouldn't happen with new system)
+        alert("Order placed successfully!");
         setItems([]);
         setCoupon("");
-        setAppliedCoupon(null);
         setSelected({});
-      } else {
-        alert("Order created but payment info not available. Please contact admin.");
+        window.location.href = "/orders";
       }
     } catch (err: any) {
       const msg =
@@ -311,108 +488,29 @@ function CartInner() {
         "Checkout failed. Please try again.";
       alert(msg);
       console.error("checkout error", err?.response || err);
-      
-      // ✅ ไม่ต้องลบ cart items เพราะ checkout failed
-      // Items จะยังอยู่ใน cart ให้ลูกค้าลองใหม่ได้
     } finally {
       setPlacing(false);
     }
   }
 
-  // ---------- payment slip upload ----------
-  async function uploadPaymentSlip() {
-    if (!paymentSlip || !paymentInfo) {
-      alert("Please select a payment slip image.");
-      return;
-    }
+  const handlePaymentComplete = () => {
+    setShowPayment(false);
+    setPaymentOrder(null);
+    setPaymentConfig(null);
+    // Clear cart and redirect
+    setItems([]);
+    setCoupon("");
+    setSelected({});
+    window.location.href = "/orders";
+  };
 
-    try {
-      const formData = new FormData();
-      formData.append("slip", paymentSlip);
-      formData.append("order_id", paymentInfo.id.toString());
-
-      await api.post("/api/orders/upload-payment-slip/", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      alert("Payment slip uploaded successfully! Admin will verify your payment.");
-      setPaymentInfo(null);
-      setPaymentSlip(null);
-      window.location.href = "/orders";
-    } catch (error: any) {
-      const message = error?.response?.data?.detail || "Failed to upload payment slip.";
-      alert(message);
-    }
-  }
-
-  // Payment Modal
-  if (paymentInfo) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-10">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 space-y-4">
-          <h2 className="text-xl font-bold text-center">Payment Required</h2>
-          
-          <div className="text-center space-y-2">
-            <div className="text-2xl font-bold text-emerald-400">
-              Total: {fmt.currency(paymentInfo.total_amount)}
-            </div>
-            <div className="text-sm text-zinc-400">
-              Order expires: {new Date(paymentInfo.expires_at).toLocaleString()}
-            </div>
-          </div>
-
-          <div className="flex justify-center">
-            <div className="bg-white p-4 rounded-lg">
-              <img 
-                src={paymentInfo.qr_code_image} 
-                alt="Payment QR Code" 
-                className="w-64 h-64 object-contain"
-              />
-            </div>
-          </div>
-
-          <div className="text-center space-y-1 text-sm">
-            <div><strong>Bank:</strong> {paymentInfo.bank_name}</div>
-            <div><strong>Account:</strong> {paymentInfo.account_name}</div>
-            <div><strong>Number:</strong> {paymentInfo.account_number}</div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-sm text-zinc-400">Upload Payment Slip:</div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setPaymentSlip(e.target.files?.[0] || null)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2"
-            />
-            {paymentSlip && (
-              <div className="text-sm text-emerald-400">
-                Selected: {paymentSlip.name}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={uploadPaymentSlip}
-            disabled={!paymentSlip}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded px-4 py-2 font-medium"
-          >
-            Upload Payment Slip
-          </button>
-
-          <button
-            onClick={() => {
-              setPaymentInfo(null);
-              setPaymentSlip(null);
-            }}
-            className="w-full bg-zinc-800 hover:bg-zinc-700 rounded px-4 py-2 text-sm"
-          >
-            Cancel (Order will be cancelled)
-          </button>
-        </div>
-      </main>
-    );
-  }
+  const handlePaymentCancel = () => {
+    setShowPayment(false);
+    setPaymentOrder(null);
+    setPaymentConfig(null);
+    // Reload cart to show restored items
+    loadCart();
+  };
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-4">
@@ -475,9 +573,11 @@ function CartInner() {
                     <div className="font-semibold text-sm">
                       {it.product_detail.name_en}
                     </div>
+                    {/* รายละเอียดตัวเลือกที่ลูกค้าเลือกทึ่เลือก */}
                     {brief && (
                       <div className="text-xs text-zinc-400">{brief}</div>
                     )}
+                    {/* ราคาต่อชิ้น */}
                     <div className="text-xs text-zinc-400">
                       {fmt.currency(it.product_detail.sale_price)} ×
                     </div>
@@ -542,82 +642,34 @@ function CartInner() {
             </select>
           </div>
 
-          {/* Coupon Section */}
-          <div className="space-y-2">
-            <div className="text-sm text-zinc-400">Coupon code</div>
-            
-            {appliedCoupon ? (
-              <div className="p-2 bg-emerald-900/20 border border-emerald-700 rounded flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-emerald-400">{appliedCoupon.code}</div>
-                  <div className="text-xs text-zinc-400">
-                    {appliedCoupon.discount_type === "percent" 
-                      ? `${appliedCoupon.percent_off}% discount` 
-                      : "Free shipping"}
-                    {appliedCoupon.min_spend > 0 && 
-                      ` (Min spend: ${fmt.currency(appliedCoupon.min_spend)})`}
-                  </div>
-                </div>
-                <button
-                  onClick={removeCoupon}
-                  className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  value={coupon}
-                  onChange={(e) => setCoupon(e.target.value)}
-                  placeholder="Enter coupon code"
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
-                />
-                <button
-                  onClick={applyCoupon}
-                  disabled={!coupon.trim()}
-                  className="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                >
-                  Apply
-                </button>
-              </div>
-            )}
+          {/* Coupon */}
+          <div className="flex gap-2">
+            <input
+              value={coupon}
+              onChange={(e) => setCoupon(e.target.value)}
+              placeholder={t("coupon_code") || "Coupon code"}
+              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1"
+            />
+            <button
+              onClick={applyCoupon}
+              className="px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700"
+            >
+              {t("apply")}
+            </button>
           </div>
 
           {/* Totals */}
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span>{fmt.currency(subtotal)}</span>
-            </div>
-            
-            {/* Show discount if applied */}
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-emerald-400">
-                <span>Discount ({appliedCoupon?.percent_off}%)</span>
-                <span>-{fmt.currency(discountAmount)}</span>
-              </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span>Shipping</span>
-              <span>
-                {appliedCoupon?.discount_type === "free_shipping" && subtotal >= (appliedCoupon?.min_spend || 0) ? (
-                  <span className="text-emerald-400">
-                    <span className="line-through text-zinc-500">{fmt.currency(shipping)}</span> Free
-                  </span>
-                ) : (
-                  fmt.currency(finalShipping)
-                )}
-              </span>
-            </div>
-            
-            <div className="border-t border-zinc-700 pt-2">
-              <div className="flex justify-between font-semibold text-emerald-400 text-lg">
-                <span>Total</span>
-                <span>{fmt.currency(total)}</span>
-              </div>
-            </div>
+          <div className="flex justify-between">
+            <span>Subtotal</span>
+            <span>{fmt.currency(subtotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Shipping</span>
+            <span>{fmt.currency(chosen.length > 0 ? shipping : 0)}</span>
+          </div>
+          <div className="flex justify-between font-semibold text-emerald-400">
+            <span>Total</span>
+            <span>{fmt.currency(total)}</span>
           </div>
 
           <button
@@ -626,7 +678,7 @@ function CartInner() {
             className="w-full px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60"
             title={chosen.length === 0 ? "Select at least 1 item" : "Checkout"}
           >
-            {placing ? "Processing..." : t("checkout")}
+            {placing ? "Placing..." : t("checkout")}
           </button>
 
           {chosen.length === 0 && items.length > 0 && (
@@ -636,6 +688,16 @@ function CartInner() {
           )}
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPayment && paymentOrder && paymentConfig && (
+        <PaymentRequired
+          order={paymentOrder}
+          paymentConfig={paymentConfig}
+          onPaymentComplete={handlePaymentComplete}
+          onCancel={handlePaymentCancel}
+        />
+      )}
     </main>
   );
 }

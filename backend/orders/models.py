@@ -1,4 +1,4 @@
-# orders/models.py - เพิ่ม Payment models
+# orders/models.py
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -32,34 +32,54 @@ class CartItem(models.Model):
     variant = models.ForeignKey(Variant, on_delete=models.PROTECT)
     quantity = models.PositiveIntegerField(default=1)
 
-# ===== เพิ่มส่วน Payment Models =====
-class PaymentMethod(models.Model):
-    """ข้อมูล QR Code ที่แอดมินอัปโหลด"""
-    name = models.CharField(max_length=100)
-    bank_name = models.CharField(max_length=100)
-    account_name = models.CharField(max_length=200)
-    account_number = models.CharField(max_length=50)
-    qr_code_image = models.ImageField(upload_to='payment_qr/')
+# New Payment Configuration Model
+class PaymentConfig(models.Model):
+    bank_name = models.CharField(max_length=100, default="PromptPay")
+    account_name = models.CharField(max_length=200, default="AJ Shoes Store")
+    account_number = models.CharField(max_length=50, default="0912345678")
+    qr_code_image = models.ImageField(upload_to='payment_qr/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
-        return f"{self.name} - {self.bank_name}"
+        return f"{self.bank_name} - {self.account_name}"
 
 class Order(models.Model):
     class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Pending Payment"
         PENDING = "pending", "Pending"
         SHIPPED = "shipped", "Shipped"
         DELIVERED = "delivered", "Delivered"
+        # ลบ CANCELLED ออกเลย
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
     address = models.ForeignKey(Address, on_delete=models.PROTECT)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING_PAYMENT)
     shipping_carrier = models.CharField(max_length=32, default="Kerry")
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=50)
     coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_deadline = models.DateTimeField(null=True, blank=True)
+    payment_slip = models.ImageField(upload_to='payment_slips/', null=True, blank=True)
+    payment_verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.payment_deadline and self.status == self.Status.PENDING_PAYMENT:
+            self.payment_deadline = timezone.now() + timedelta(minutes=30)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_payment_expired(self):
+        if not self.payment_deadline:
+            return False
+        return timezone.now() > self.payment_deadline
+
+    def __str__(self):
+        return f"Order #{self.id} - {self.user.username}"
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
@@ -67,44 +87,6 @@ class OrderItem(models.Model):
     variant = models.ForeignKey(Variant, on_delete=models.PROTECT)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     quantity = models.PositiveIntegerField(default=1)
-
-class OrderPayment(models.Model):
-    """การชำระเงิน"""
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending Payment"
-        UPLOADED = "uploaded", "Slip Uploaded"
-        VERIFIED = "verified", "Payment Verified"
-        REJECTED = "rejected", "Payment Rejected"
-
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment')
-    payment_method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT)
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    
-    # Payment slip upload
-    payment_slip = models.ImageField(upload_to='payment_slips/', null=True, blank=True)
-    uploaded_at = models.DateTimeField(null=True, blank=True)
-    
-    # Admin verification
-    verified_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_payments')
-    verified_at = models.DateTimeField(null=True, blank=True)
-    admin_note = models.TextField(blank=True, default="")
-    
-    # Expiry
-    expires_at = models.DateTimeField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(hours=24)
-        super().save(*args, **kwargs)
-
-    def is_expired(self):
-        return timezone.now() > self.expires_at
-
-    def __str__(self):
-        return f"Payment for Order #{self.order.id} - {self.get_status_display()}"
 
 class Favorite(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favorites")
@@ -121,28 +103,3 @@ class Review(models.Model):
     rating = models.PositiveIntegerField(default=5)
     comment = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
-
-class PendingCheckout(models.Model):
-    """เก็บข้อมูล checkout ชั่วคราวแทน session"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="pending_checkouts")
-    temp_payment_id = models.CharField(max_length=100, unique=True)
-    address = models.ForeignKey(Address, on_delete=models.CASCADE)
-    carrier = models.CharField(max_length=32, default="Kerry")
-    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=50)
-    coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True)
-    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    cart_item_ids = models.JSONField()  # เก็บ list ของ cart item ids
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-
-    def save(self, *args, **kwargs):
-        if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(hours=24)
-        super().save(*args, **kwargs)
-
-    def is_expired(self):
-        return timezone.now() > self.expires_at
-
-    def __str__(self):
-        return f"Pending checkout {self.temp_payment_id} by {self.user.username}"

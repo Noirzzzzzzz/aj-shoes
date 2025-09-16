@@ -103,3 +103,7 @@ class Review(models.Model):
     rating = models.PositiveIntegerField(default=5)
     comment = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # ✅ ใหม่: เก็บเวลาแก้ไขล่าสุด
+
+    class Meta:
+        unique_together = ("user", "product")  # ✅ ใหม่: จำกัด 1 คนรีวิวสินค้าตัวเดิมได้ครั้งเดียว

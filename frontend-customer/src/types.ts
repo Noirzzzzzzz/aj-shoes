@@ -31,6 +31,8 @@ export type Product = {
   is_active: boolean;
   images: ProductImage[];
   variants: Variant[];
+  average_rating?: number;   // 0–5
+  review_count?: number;
 };
 
 export type HomeRows = {

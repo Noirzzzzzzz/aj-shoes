@@ -1,7 +1,6 @@
 from django.db import models
 from django.core.files.base import ContentFile
 from PIL import Image, ImageOps
-from io import BytesIO
 import hashlib
 import os
 
@@ -31,10 +30,11 @@ class Product(models.Model):
     description_th = models.TextField(blank=True, default="")
 
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    sale_percent = models.PositiveIntegerField(default=0)  # 0-50 (Superadmin set)
+    sale_percent = models.PositiveIntegerField(default=0)
 
-    popularity = models.IntegerField(default=0)  # simplistic popularity score
+    popularity = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    is_recommended = models.BooleanField(default=False)  # ✅ ฟิลด์ใหม่
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -45,14 +45,12 @@ class Product(models.Model):
     @property
     def sale_price(self):
         if self.sale_percent > 0:
-            # ใช้ round แบบ float พอสำหรับ use-case นี้
             return round(float(self.base_price) * (100 - self.sale_percent) / 100, 2)
         return float(self.base_price)
 
 
-# ---------- ProductImage with file-first design ----------
+# ---------- ProductImage ----------
 def product_image_upload_to(instance, filename):
-    # แยกเก็บตาม product_id และตั้งชื่อจาก hash กันซ้ำ
     base, ext = os.path.splitext(filename.lower() or "image")
     h = hashlib.sha1((filename or "image").encode("utf-8")).hexdigest()[:16]
     return f"products/{instance.product_id}/{h}{ext or '.jpg'}"
@@ -60,19 +58,14 @@ def product_image_upload_to(instance, filename):
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
-
-    # เก็บ "ไฟล์จริง" เป็นหลัก
     file = models.ImageField(upload_to=product_image_upload_to, blank=True, null=True)
-
-    # เก็บ URL แหล่งที่มาที่ใช้ "นำเข้า" ครั้งเดียว (ไม่ใช้ hotlink แสดงผล)
     url_source = models.URLField(blank=True, default="")
 
-    # เมต้า
     alt = models.CharField(max_length=255, blank=True, default="")
     is_cover = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    color = models.CharField(max_length=64, blank=True, default="")
 
-    # เก็บข้อมูลภาพ (ช่วยเรื่องแสดงผล/ตรวจสอบ)
     width = models.PositiveIntegerField(default=0)
     height = models.PositiveIntegerField(default=0)
     checksum = models.CharField(max_length=64, blank=True, default="")
@@ -83,25 +76,17 @@ class ProductImage(models.Model):
     def __str__(self):
         return f"Image(product={self.product_id}, id={self.pk})"
 
-    # ---- Utilities ----
     def _update_dimensions_and_checksum(self):
-        """
-        คำนวณขนาดภาพและ checksum สำหรับไฟล์ที่อัปโหลด
-        """
         if not self.file:
             return
-
-        # ขนาดภาพ
         try:
             self.file.open("rb")
             im = Image.open(self.file)
-            im = ImageOps.exif_transpose(im)  # หมุนตาม EXIF
+            im = ImageOps.exif_transpose(im)
             self.width, self.height = im.size
         except Exception:
-            # เกิดปัญหากับ Pillow ก็ปล่อยค่าเดิมไว้
             pass
 
-        # checksum
         try:
             h = hashlib.sha256()
             for chunk in self.file.chunks():
@@ -111,10 +96,10 @@ class ProductImage(models.Model):
             pass
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)  # ให้มีไฟล์บนดิสก์ก่อน
-        changed_fields = []
+        super().save(*args, **kwargs)
         before_w, before_h, before_ck = self.width, self.height, self.checksum
         self._update_dimensions_and_checksum()
+        changed_fields = []
         if (self.width, self.height) != (before_w, before_h):
             changed_fields += ["width", "height"]
         if self.checksum != before_ck:

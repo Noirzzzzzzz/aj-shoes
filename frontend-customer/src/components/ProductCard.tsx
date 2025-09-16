@@ -3,27 +3,20 @@ import { Product } from "@/types";
 import Price from "./Price";
 import RatingStars from "./RatingStars";
 import { optImg } from "@/utils/img";
-import useFavorites from "@/hooks/useFavorites"; // ใช้ฮุค favorites
+import useFavorites from "@/hooks/useFavorites";
 
-// สร้างตัวช่วยแปลง path ของไฟล์ใน MEDIA ให้เป็น URL ใช้งานได้จริง
+/* ---------- helpers ---------- */
 function mediaUrl(path?: string): string | "" {
   if (!path) return "";
-  // ถ้า backend ส่งมาเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
   if (/^https?:\/\//i.test(path)) return path;
-  // ไม่งั้น prefix ด้วย MEDIA_URL (กำหนดใน .env ของ frontend เป็น VITE_MEDIA_URL)
   const base = (import.meta as any).env?.VITE_MEDIA_URL || "/media/";
   return `${String(base).replace(/\/$/, "")}/${String(path).replace(/^\//, "")}`;
 }
-
 function productCoverSrc(p: Product, w = 256, h = 256, q = 80): string {
-  const cover = p.images.find((im: any) => im.is_cover) || p.images[0];
+  const cover = (p.images || []).find((im: any) => im.is_cover) || p.images?.[0];
   if (!cover) return "";
-
-  // 1) ถ้ามีไฟล์ (เราคุมคุณภาพ/ความเสถียรได้) → ใช้ไฟล์เรา
   const fileSrc = mediaUrl((cover as any).file);
   if (fileSrc) return fileSrc;
-
-  // 2) ถ้าไม่มีไฟล์ → fallback ใช้ตัว optimizer ของเราแปลงจาก image_url
   const u = (cover as any).image_url || "";
   return u ? optImg(u, { w, h, fit: "cover", q }) : "";
 }
@@ -38,18 +31,16 @@ export default function ProductCard({
   showFavorite?: boolean;
 }) {
   const src = productCoverSrc(p);
-
   const { isFav, toggle } = useFavorites();
   const fav = useMemo(() => isFav(p.id), [isFav, p.id]);
 
   return (
-    // ทำให้ปุ่มการ์ดเป็นตำแหน่งอ้างอิง (relative) แล้ววางหัวใจไว้ "ข้างใน"
     <button
       onClick={onClick}
       className="relative block min-w-40 w-40 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-left overflow-hidden"
       aria-label={p.name_en}
     >
-      {/* ปุ่มหัวใจ: absolute อ้างอิงกับการ์ดนี้เสมอ */}
+      {/* Favorite */}
       {showFavorite && (
         <span
           role="button"
@@ -65,7 +56,6 @@ export default function ProductCard({
             (fav ? "bg-black/40 text-red-500" : "bg-black/40 hover:bg-black/60 text-white")
           }
         >
-          {/* ใช้ currentColor → เมื่อ fav จะเป็นแดง */}
           <svg
             width="20"
             height="20"
@@ -79,13 +69,33 @@ export default function ProductCard({
         </span>
       )}
 
-      <div className="h-40 w-full bg-zinc-800">
-        {src && <img src={src} alt={p.name_en} className="w-full h-full object-cover" loading="lazy" />}
+      {/* รูป: กล่องสี่เหลี่ยมจัตุรัสเท่ากันทุกการ์ด + จัดรูปกึ่งกลางไม่บิดเบี้ยว */}
+      <div className="w-full aspect-square bg-zinc-800 flex items-center justify-center">
+        {src && (
+          <img
+            src={src}
+            alt={p.name_en}
+            className="max-h-full max-w-full object-contain"
+            loading="lazy"
+            draggable={false}
+          />
+        )}
       </div>
+
+      {/* เนื้อหา */}
       <div className="p-2 space-y-1">
-        <div className="text-xs font-semibold line-clamp-2">{p.name_en}</div>
+        {/* ชื่อ: บรรทัดเดียว + ... */}
+        <div className="text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+          {p.name_en}
+        </div>
+
         <Price base={p.base_price} salePercent={p.sale_percent} salePrice={p.sale_price} />
-        <RatingStars rating={5} />
+
+        {/* ดาวจากรีวิวจริง + จำนวนรีวิว */}
+        <div className="flex items-center gap-1">
+          <RatingStars rating={p.average_rating || 0} />
+          <span className="text-[11px] text-zinc-400">({p.review_count || 0})</span>
+        </div>
       </div>
     </button>
   );

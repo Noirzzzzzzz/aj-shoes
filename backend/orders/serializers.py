@@ -141,9 +141,16 @@ class FavoriteSerializer(serializers.ModelSerializer):
 
 
 class ReviewSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()  # ✅ ใหม่
+
     class Meta:
         model = Review
-        fields = ["id", "product", "rating", "comment", "created_at"]
+        fields = ["id", "product", "rating", "comment", "created_at", "updated_at", "username"]  # ✅ เพิ่ม updated_at, username
+        read_only_fields = ["id", "created_at", "updated_at", "username"]
+
+    def get_username(self, obj):
+        # ป้องกันกรณี user ถูกลบหรือไม่มี username
+        return getattr(obj.user, "username", "") or ""
 
 
 # ---------- Order ----------

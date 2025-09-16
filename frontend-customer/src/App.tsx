@@ -1,3 +1,4 @@
+// App.tsx — READY TO REPLACE
 import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
@@ -12,6 +13,9 @@ import Orders from "./pages/Orders";
 import Chat from "./pages/Chat";
 import { AuthProvider } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
+import ProductReviews from "./pages/ProductReviews";
+// ✅ import หน้าใหม่
+import CouponCenter from "./pages/CouponCenter";
 
 export default function App() {
   return (
@@ -25,10 +29,13 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/addresses" element={<Addresses />} />
-          <Route path="/wishlist" element={<Favorites />} />
+          <Route path="/favorites" element={<Favorites />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/chat" element={<Chat />} />
+          {/* ✅ เส้นทางใหม่ */}
+          <Route path="/coupons" element={<CouponCenter />} />
+          <Route path="/product/:id/reviews" element={<ProductReviews />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
         <Toaster position="top-right" />

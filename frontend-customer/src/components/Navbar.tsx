@@ -1,10 +1,11 @@
+// Navbar.tsx — READY TO REPLACE
 import { Link, NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import ThemeToggle from "./ThemeToggle";
 import LanguageToggle from "./LanguageToggle";
 import { useAuth } from "@/context/AuthContext";
 import SearchControl from "@/components/SearchControl";
-import { FaShoppingCart } from "react-icons/fa"; // ✅ เพิ่มไอคอนตะกร้า
+import { FaShoppingCart } from "react-icons/fa";
 
 export default function Navbar() {
   const { t } = useTranslation();
@@ -19,18 +20,18 @@ export default function Navbar() {
 
         <nav className="flex items-center gap-4 text-sm">
           <NavLink to="/" className="hover:text-brand-primary">{t("home")}</NavLink>
-          <NavLink to="/wishlist" className="hover:text-brand-primary">{t("Favorites")}</NavLink>
+          <NavLink to="/favorites" className="hover:text-brand-primary">{t("Favorites")}</NavLink>
           <NavLink to="/orders" className="hover:text-brand-primary">{t("orders")}</NavLink>
           <NavLink to="/chat" className="hover:text-brand-primary">{t("chat")}</NavLink>
+          {/* ✅ เพิ่มเมนู Coupons */}
+          <NavLink to="/coupons" className="hover:text-brand-primary">{t("Coupons")}</NavLink>
         </nav>
 
         <div className="ml-auto h-14 flex items-center gap-3">
           <SearchControl />
-          {/* ✅ Cart พร้อมไอคอน */}
           <NavLink to="/cart" className="hover:text-brand-primary flex items-center gap-1">
             <FaShoppingCart className="text-lg" />
           </NavLink>
-
           <LanguageToggle />
           {user ? (
             <div className="flex items-center gap-2">

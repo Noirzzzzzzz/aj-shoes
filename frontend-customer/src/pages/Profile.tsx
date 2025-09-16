@@ -3,6 +3,7 @@ import api from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { User } from "@/types";
 import Protected from "@/components/Protected";
+import ReviewList from "@/components/reviews/ReviewList";
 
 export default function Profile() {
   return (
@@ -55,7 +56,7 @@ function ProfileInner() {
   if (!me) return null;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 space-y-4">
+    <main className="mx-auto max-w-2xl px-4 py-10 space-y-6">
       <h1 className="text-xl font-bold">Profile</h1>
 
       {!editing ? (

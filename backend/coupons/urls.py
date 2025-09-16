@@ -1,10 +1,8 @@
 from rest_framework.routers import DefaultRouter
-from django.urls import path, include
 from .views import CouponViewSet
 
 router = DefaultRouter()
-router.register(r"", CouponViewSet, basename="coupon")
+# ✅ ลงทะเบียนที่รากของ prefix นี้ (ว่างเปล่า) เพื่อให้ path เป็น /api/coupons/...
+router.register(r"", CouponViewSet, basename="coupons")
 
-urlpatterns = [
-    path("coupons/", include(router.urls)),
-]
+urlpatterns = router.urls

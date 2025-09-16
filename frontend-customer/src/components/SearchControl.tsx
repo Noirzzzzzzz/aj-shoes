@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, createSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, SlidersHorizontal } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import api from "@/api/client";
 import FilterModal, { FilterState } from "./FilterModal";
 
@@ -11,8 +10,7 @@ type Brand = { id: number; name: string };
 type Suggestion = { id?: number; label: string; value: string };
 
 export default function SearchControl() {
-  const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [query, setQuery] = useState("");
@@ -185,7 +183,7 @@ export default function SearchControl() {
       <div className="flex items-center gap-2 h-14 relative">
         <button
           aria-label="Search"
-          title={t("search") || "Search"}
+          title={"Search"}
           onClick={() => setExpanded((s) => !s)}
           className="h-9 w-9 grid place-items-center rounded-xl hover:bg-white/10 shrink-0"
         >
@@ -214,7 +212,7 @@ export default function SearchControl() {
                 onKeyDown={onKeyDown}
                 onFocus={() => query && setOpenSugs(true)}
                 onBlur={() => setTimeout(() => setOpenSugs(false), 120)}
-                placeholder={t("search") || "Search"}
+                placeholder={"Search"}
                 className="bg-transparent outline-none px-2 text-sm flex-1 h-full"
               />
               {SuggestList}
@@ -222,7 +220,7 @@ export default function SearchControl() {
               <button
                 type="button"
                 aria-label="Filters"
-                title={t("filters") || "Filters"}
+                title={"Filters"}
                 onClick={() => setFilterOpen(true)}
                 className="h-9 w-9 grid place-items-center rounded-xl hover:bg-white/10 shrink-0 mr-1"
               >
@@ -234,7 +232,7 @@ export default function SearchControl() {
                 className="h-9 px-3 rounded-xl bg-white text-black hover:opacity-90 shrink-0 mr-2 flex items-center gap-1 text-sm"
               >
                 <Search size={14} />
-                <span className="hidden lg:inline">{t("search") || "Search"}</span>
+                <span className="hidden lg:inline">{"Search"}</span>
               </button>
             </motion.form>
           )}
@@ -259,7 +257,7 @@ export default function SearchControl() {
                     onKeyDown={onKeyDown}
                     onFocus={() => query && setOpenSugs(true)}
                     onBlur={() => setTimeout(() => setOpenSugs(false), 120)}
-                    placeholder={t("search") || "Search"}
+                    placeholder={"Search"}
                     className="bg-transparent outline-none px-2 w-full text-sm h-full"
                   />
                   {/* suggestions list for mobile */}
@@ -273,7 +271,7 @@ export default function SearchControl() {
                   <SlidersHorizontal size={18} />
                 </button>
                 <button type="submit" className="h-9 px-3 rounded-xl bg-white text-black text-sm">
-                  {t("search") || "Go"}
+                  {"Go"}
                 </button>
               </form>
             </motion.div>

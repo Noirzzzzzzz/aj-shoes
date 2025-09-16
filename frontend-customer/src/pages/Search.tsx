@@ -4,11 +4,8 @@ import api from "@/api/client";
 import { Product } from "@/types";
 import ProductCard from "@/components/ProductCard";
 import ProductModal from "@/components/ProductModal";
-import { useTranslation } from "react-i18next";
-
 export default function Search() {
-  const { t } = useTranslation();
-  const { search } = useLocation();
+    const { search } = useLocation();
 
   // แปลง query string -> URLSearchParams
   const params = useMemo(() => new URLSearchParams(search), [search]);
@@ -45,12 +42,12 @@ export default function Search() {
       {/* หัวหน้าเพจ */}
       <div>
         <h1 className="text-2xl font-bold mb-1">
-          {t("Search Results") || "ผลการค้นหา (Search Results)"}
+          {"ผลการค้นหา (Search Results)"}
         </h1>
         <p className="text-sm text-zinc-400">
           {q ? (
             <>
-              {t("showingFor") || "Showing results for"}{" "}
+              {"Showing results for"}{" "}
               <span className="font-semibold">“{q}”</span>
               {discountOnly && " (discount only)"}
             </>
@@ -61,7 +58,7 @@ export default function Search() {
           )}
           {/* แสดงสรุป filter อื่น ๆ ถ้ามี */}
           <span className="ml-2">
-            {brand && <>· {t("brand") || "Brand"}: {brand}</>}
+            {brand && <>· {"Brand"}: {brand}</>}
             {minPrice && <> · ≥ ฿{minPrice}</>}
             {maxPrice && <> · ≤ ฿{maxPrice}</>}
             {ordering && <> · sort: {ordering}</>}
@@ -76,7 +73,7 @@ export default function Search() {
       {!loading && !error && (
         <>
           {list.length === 0 ? (
-            <div className="text-zinc-400">{t("noResults") || "ไม่พบสินค้า"}</div>
+            <div className="text-zinc-400">{"ไม่พบสินค้า"}</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {list.map((p) => (

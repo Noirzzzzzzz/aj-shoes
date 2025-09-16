@@ -4,13 +4,10 @@ import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import api from "@/api/client";
 import { RowSkeleton } from "./Skeleton";
-import { useTranslation } from "react-i18next";
-
 export default function ProductRow({ title, products }: { title: string; products?: Product[] }) {
   const [list, setList] = useState<Product[]>(products || []);
   const [loading, setLoading] = useState(!products);
   const [sel, setSel] = useState<Product | null>(null);
-  const { i18n } = useTranslation();
 
   useEffect(() => {
     if (products) return;

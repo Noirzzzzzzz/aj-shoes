@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
 
 export type SortKey =
@@ -43,8 +42,7 @@ function ModalContent({
   initial,
   brands = [],
 }: Props) {
-  const { t } = useTranslation();
-  const [state, setState] = useState<FilterState>(initial ?? defaultFilter);
+    const [state, setState] = useState<FilterState>(initial ?? defaultFilter);
 
   // sync ค่าเริ่มต้นทุกครั้งที่เปิด
   useEffect(() => {
@@ -67,15 +65,15 @@ function ModalContent({
 
   const sortOptions: Array<{ value: FilterState["sortBy"]; label: string }> = useMemo(
     () => [
-      { value: "-popularity", label: `${t("popularity")} ↓` },
-      { value: "popularity", label: `${t("popularity")} ↑` },
-      { value: "base_price", label: `${t("price")} ↑` },
-      { value: "-base_price", label: `${t("price")} ↓` },
-      { value: "-sale_percent", label: `${t("discount")} ↓` },
-      { value: "sale_percent", label: `${t("discount")} ↑` },
+      { value: "-popularity", label: "Popularity ↑" },
+      { value: "popularity", label: "Popularity ↓" },
+      { value: "base_price", label: "Price ↑" },
+      { value: "-base_price", label: "Price ↓" },
+      { value: "-sale_percent", label: "Discount ↑" },
+      { value: "sale_percent", label: "Discount ↓" },
     ],
-    [t]
-  );
+    []
+  );;
 
   return (
     <AnimatePresence>
@@ -104,7 +102,7 @@ function ModalContent({
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 sticky top-0 bg-zinc-900/95 backdrop-blur rounded-t-2xl border-b border-white/10">
-              <h3 className="text-lg font-semibold">{t("filters") || "Filters"}</h3>
+              <h3 className="text-lg font-semibold">{"Filters"}</h3>
               <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10">
                 <X size={18} />
               </button>
@@ -114,13 +112,13 @@ function ModalContent({
             <div className="px-5 py-4 space-y-4">
               {/* Brand */}
               <div className="space-y-2">
-                <label className="text-sm opacity-80">{t("brand") || "Brand"}</label>
+                <label className="text-sm opacity-80">{"Brand"}</label>
                 <select
                   className="w-full rounded-xl bg-zinc-800 border border-white/10 px-3 py-2 outline-none"
                   value={state.brand}
                   onChange={(e) => setState((s) => ({ ...s, brand: e.target.value }))}
                 >
-                  <option value="">{t("all") || "All"}</option>
+                  <option value="">{"All"}</option>
                   {brands.map((b) => (
                     <option key={b.id} value={b.name}>
                       {b.name}
@@ -132,7 +130,7 @@ function ModalContent({
               {/* Price */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-sm opacity-80">{t("minPrice") || "Min Price (฿)"}</label>
+                  <label className="text-sm opacity-80">{"Min Price (฿)"}</label>
                   <input
                     type="number"
                     min={0}
@@ -147,7 +145,7 @@ function ModalContent({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm opacity-80">{t("maxPrice") || "Max Price (฿)"}</label>
+                  <label className="text-sm opacity-80">{"Max Price (฿)"}</label>
                   <input
                     type="number"
                     min={0}
@@ -165,7 +163,7 @@ function ModalContent({
 
               {/* Sort */}
               <div className="space-y-2">
-                <label className="text-sm opacity-80">{t("sortBy") || "Sort By"}</label>
+                <label className="text-sm opacity-80">{"Sort By"}</label>
                 <select
                   className="w-full rounded-xl bg-zinc-800 border border-white/10 px-3 py-2 outline-none"
                   value={state.sortBy}
@@ -188,7 +186,7 @@ function ModalContent({
                   checked={state.discountOnly}
                   onChange={(e) => setState((s) => ({ ...s, discountOnly: e.target.checked }))}
                 />
-                {t("discountOnly") || "Show only discounted products"}
+                {"Show only discounted products"}
               </label>
             </div>
 
@@ -198,20 +196,20 @@ function ModalContent({
                 className="px-3 py-2 rounded-xl bg-transparent border border-white/15 hover:bg-white/5"
                 onClick={() => setState(defaultFilter)}
               >
-                {t("clearAll") || "Clear All"}
+                {"Clear All"}
               </button>
               <div className="flex gap-2">
                 <button
                   className="px-3 py-2 rounded-xl bg-transparent border border-white/15 hover:bg-white/5"
                   onClick={onClose}
                 >
-                  {t("cancel") || "Cancel"}
+                  {"Cancel"}
                 </button>
                 <button
                   className="px-4 py-2 rounded-xl bg-white text-black font-medium hover:opacity-90"
                   onClick={() => onApply(state)}
                 >
-                  {t("applyFilters") || "Apply Filters"}
+                  {"Apply Filters"}
                 </button>
               </div>
             </div>

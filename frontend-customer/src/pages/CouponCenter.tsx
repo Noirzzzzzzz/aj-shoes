@@ -1,8 +1,6 @@
 // src/pages/CouponCenter.tsx — READY TO REPLACE
 import { useEffect, useState } from "react";
 import api from "@/api/client";
-import { useTranslation } from "react-i18next";
-
 interface Coupon {
   id: number;
   code: string;
@@ -37,8 +35,7 @@ async function postWithFallback(pairs: Array<[string, any]>) {
 }
 
 export default function CouponCenter() {
-  const { t } = useTranslation();
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+    const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function loadCoupons() {
@@ -108,7 +105,7 @@ export default function CouponCenter() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold">{t("coupons") || "Coupons"}</h1>
+      <h1 className="text-2xl font-bold">{"Coupons"}</h1>
 
       {loading ? (
         <div>Loading...</div>

@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Product, Variant } from "@/types";
 import Price from "./Price";
-import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/api/client";
 import toast, { Toaster } from "react-hot-toast";
@@ -36,8 +35,7 @@ function useColorImages(p: Product, color: string): ProductImage[] {
 }
 
 export default function ProductModal({ p, onClose }:{ p: Product; onClose: () => void; }) {
-  const { t, i18n } = useTranslation();
-  const { user } = useAuth();
+    const { user } = useAuth();
 
   /** ========= states เดิม ========= **/
   const [color, setColor] = useState<string>("");
@@ -47,8 +45,8 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
 
   const [qtyInput, setQtyInput] = useState<string | undefined>(undefined);
 
-  const name = i18n.language === "th" && (p as any).name_th ? (p as any).name_th : (p as any).name_en;
-  const desc = i18n.language === "th" && (p as any).description_th ? (p as any).description_th : (p as any).description_en;
+  const name = (p as any).name_en || (p as any).name;
+  const desc = (p as any).description_th || (p as any).description_en || (p as any).description;
 
   const colors = useMemo(() => Array.from(new Set(p.variants.map(v => v.color))), [p.variants]);
   // helper: key ของไซส์ตามโหมด
@@ -130,9 +128,9 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
   /** ========= cart ========= **/
   const canAdd = !!user && !!selected && qty > 0 && (selected?.stock ?? 0) > 0;
   async function addToCart() {
-    if (!user) { toast.error(t("please_login")); return; }
-    if (!selected) { toast.error(t("select_options")); return; }
-    if ((selected as any).stock <= 0) { toast.error(t("out_of_stock")); return; }
+    if (!user) { toast.error("please_login"); return; }
+    if (!selected) { toast.error("select_options"); return; }
+    if ((selected as any).stock <= 0) { toast.error("out_of_stock"); return; }
     await api.post("/api/orders/cart/", { product: (p as any).id, variant: (selected as any).id, quantity: qty });
     toast.success("Added to cart");
   }
@@ -239,7 +237,7 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
 
             {/* สี */}
             <div className="space-y-2">
-              <div className="text-xs uppercase text-zinc-400">{t("color")}</div>
+              <div className="text-xs uppercase text-zinc-400">{"color"}</div>
               <div className="flex gap-2 flex-wrap">
                 {colors.map((c) => {
                   const disabled = !colorInStock[c]; // หมดทุกไซส์ → true
@@ -265,10 +263,10 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
 
             {/* ไซส์ */}
             <div className="flex items-center gap-3">
-              <div className="text-xs uppercase text-zinc-400">{t("size")}</div>
+              <div className="text-xs uppercase text-zinc-400">{"size"}</div>
               <div className="flex gap-2">
-                <button onClick={()=>{setSizeMode("eu"); setSize("");}} className={`text-xs px-2 py-1 rounded ${sizeMode==="eu"?"bg-zinc-800 border border-emerald-500":"bg-zinc-900 border border-zinc-700"}`}>{t("eu")}</button>
-                <button onClick={()=>{setSizeMode("cm"); setSize("");}} className={`text-xs px-2 py-1 rounded ${sizeMode==="cm"?"bg-zinc-800 border border-emerald-500":"bg-zinc-900 border border-zinc-700"}`}>{t("cm")}</button>
+                <button onClick={()=>{setSizeMode("eu"); setSize("");}} className={`text-xs px-2 py-1 rounded ${sizeMode==="eu"?"bg-zinc-800 border border-emerald-500":"bg-zinc-900 border border-zinc-700"}`}>{"eu"}</button>
+                <button onClick={()=>{setSizeMode("cm"); setSize("");}} className={`text-xs px-2 py-1 rounded ${sizeMode==="cm"?"bg-zinc-800 border border-emerald-500":"bg-zinc-900 border border-zinc-700"}`}>{"cm"}</button>
               </div>
             </div>
 
@@ -292,7 +290,7 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
 
             {/* จำนวน */}
             {selected && (selected as any).stock <= 0 && (
-              <div className="text-red-400 text-sm">{t("out_of_stock")}</div>
+              <div className="text-red-400 text-sm">{"out_of_stock"}</div>
             )}
             <div className="flex items-center gap-3">
               <div className="text-xs">Qty</div>
@@ -343,7 +341,7 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
                 onClick={addToCart}
                 className={`px-4 py-2 rounded font-semibold ${canAdd ? "bg-emerald-600 hover:bg-emerald-500" : "bg-zinc-700 cursor-not-allowed"}`}
               >
-                {t("add_to_cart")}
+                {"add_to_cart"}
               </button>
               <button onClick={onClose} className="px-4 py-2 rounded bg-zinc-800 hover:bg-zinc-700">Close</button>
             </div>

@@ -1,6 +1,5 @@
 // Cart.tsx — Clean Version with Real-time Coupon Updates
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import Protected from "@/components/Protected";
 import api from "@/api/client";
 import { fmt } from "@/utils/format";
@@ -73,8 +72,7 @@ function PaymentRequired({
   onCancel: () => void;
   actualTotal?: number;
 }) {
-  const { t } = useTranslation();
-  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+    const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isExpired, setIsExpired] = useState(false);
@@ -133,7 +131,7 @@ function PaymentRequired({
         <div className="text-center mb-6">
           <h1 className="text-xl font-bold text-white mb-2">Payment Required</h1>
           <div className="text-emerald-400 text-2xl font-bold">
-            {t("total")}: {fmt.currency(actualTotal || order.total)}
+            {"total"}: {fmt.currency(actualTotal || order.total)}
           </div>
           {actualTotal && actualTotal !== order.total && (
             <div className="text-sm text-zinc-400 mt-1 line-through">
@@ -152,9 +150,9 @@ function PaymentRequired({
         </div>
 
         <div className="space-y-3 mb-6 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-400">{t("bank")}:</span><span className="text-white">{paymentConfig.bank_name}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-400">{t("account")}:</span><span className="text-white">{paymentConfig.account_name}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-400">{t("number")}:</span><span className="text-white">{paymentConfig.account_number}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">{"bank"}:</span><span className="text-white">{paymentConfig.bank_name}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">{"account"}:</span><span className="text-white">{paymentConfig.account_name}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">{"number"}:</span><span className="text-white">{paymentConfig.account_number}</span></div>
         </div>
 
         <div className="text-center mb-6">
@@ -182,14 +180,14 @@ function PaymentRequired({
             disabled={uploading || isExpired || !paymentSlip}
             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:opacity-50 text-white font-medium py-3 rounded"
           >
-            {uploading ? "Uploading..." : t("upload_payment_slip")}
+            {uploading ? "Uploading..." : "upload_payment_slip"}
           </button>
           <button
             onClick={cancelOrder}
             disabled={uploading}
             className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white py-3 rounded"
           >
-            {t("cancel_order")} (Order will be cancelled)
+            {"cancel_order"} (Order will be cancelled)
           </button>
         </div>
       </div>
@@ -207,8 +205,7 @@ export default function Cart() {
 }
 
 function CartInner() {
-  const { t } = useTranslation();
-
+  
   // cart & selection
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
@@ -482,7 +479,7 @@ function CartInner() {
   /* ---------- UI ---------- */
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-4">
-      <h1 className="text-xl font-bold">{t("cart")}</h1>
+      <h1 className="text-xl font-bold">{"cart"}</h1>
 
       <div className="grid md:grid-cols-3 gap-4">
         {/* Items */}
@@ -508,7 +505,7 @@ function CartInner() {
           </div>
 
           {items.length === 0 ? (
-            <div className="text-zinc-400">{t("empty_cart") || "Your cart is empty."}</div>
+            <div className="text-zinc-400">{"Your cart is empty."}</div>
           ) : (
             items.map((it) => (
               <div key={it.id} className="flex items-center gap-3 p-3 rounded border border-zinc-800 bg-zinc-900">

@@ -21,6 +21,7 @@ INSTALLED_APPS = [
 
     "rest_framework",
     "rest_framework.authtoken",
+    "rest_framework_simplejwt",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -153,18 +154,28 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # ---- Channels ----
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer" if REDIS_URL else "channels.layers.InMemoryChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]} if REDIS_URL else {},
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
     }
-}
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 # ---- SimpleJWT ----
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=6),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # เพิ่มนี้ถ้ายังไม่มี
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
 }
 
 POPULARITY_DECAY_DAYS = 14
@@ -197,3 +208,6 @@ LOGGING = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+DEBUG = True
+ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]

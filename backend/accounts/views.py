@@ -60,17 +60,19 @@ class MeView(generics.RetrieveUpdateAPIView):
                 related_object_id=str(user.pk),
             )
 
-        # 3) ✅ ซิงก์ default_address ในโปรไฟล์ -> Orders.Address (is_default=True)
-        #    - ถ้าผู้ใช้กรอก/แก้ default_address จะสร้าง/อัปเดต Address record ให้เป็น default อัตโนมัติ
+        # 3) ✅ ซิงก์ default_address -> Orders.Address (is_default=True)
         addr_text = serializer.validated_data.get("default_address", None)
         phone_text = serializer.validated_data.get("phone", None) or getattr(user, "phone", "")
+
+        # ใช้ชื่อเต็มจาก first_name + last_name ถ้ามี ไม่งั้น fallback เป็น username
+        full_name = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip() or user.get_username()
 
         if addr_text is not None:
             addr, created = Address.objects.get_or_create(
                 user=user,
                 is_default=True,
                 defaults={
-                    "full_name": user.get_username(),
+                    "full_name": full_name,
                     "phone": phone_text or "",
                     "address": addr_text or "",
                     "province": "",
@@ -78,7 +80,7 @@ class MeView(generics.RetrieveUpdateAPIView):
                 },
             )
             if not created:
-                addr.full_name = user.get_username()
+                addr.full_name = full_name
                 if phone_text is not None:
                     addr.phone = phone_text
                 addr.address = addr_text or ""

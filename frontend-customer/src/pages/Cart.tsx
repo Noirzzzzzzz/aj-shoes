@@ -135,7 +135,6 @@ function PaymentRequired({
           </div>
           {actualTotal && actualTotal !== order.total && (
             <div className="text-sm text-zinc-400 mt-1 line-through">
-              Original: {fmt.currency(order.total)}
             </div>
           )}
           <div className="text-sm text-zinc-400 mt-2">

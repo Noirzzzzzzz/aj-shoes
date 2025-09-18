@@ -7,7 +7,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "password", "role", "phone", "default_address"]
+        # ✅ เพิ่ม first_name, last_name
+        fields = [
+            "id", "username", "email", "password",
+            "first_name", "last_name",
+            "role", "phone", "default_address",
+        ]
         read_only_fields = ["role"]
 
     def create(self, validated_data):
@@ -20,4 +25,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role", "phone", "default_address"]
+        # ✅ เพิ่ม first_name, last_name
+        fields = [
+            "id", "username", "email",
+            "first_name", "last_name",
+            "role", "phone", "default_address",
+        ]
+        read_only_fields = ["role"]

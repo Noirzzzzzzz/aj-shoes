@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm-run-all --parallel backend frontend",
-    "backend": "cd ../backend && python manage.py runserver 0.0.0.0:8000",
+    "backend": "cd ../backend && daphne -p 8000 aj_shoes_backend.asgi:application",
     "frontend": "vite --port 5173",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 5173"

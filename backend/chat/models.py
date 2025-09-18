@@ -1,15 +1,32 @@
 from django.db import models
 from django.conf import settings
 
-User = settings.AUTH_USER_MODEL
-
-class ChatThread(models.Model):
-    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="chat_threads")
+class ChatRoom(models.Model):
+    """ห้องแชทระหว่างลูกค้า 1 คนกับ admin"""
+    customer = models.OneToOneField(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="chat_room"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Chat room for {self.customer.username}"
+    
+    class Meta:
+        ordering = ['-updated_at']
 
 class ChatMessage(models.Model):
-    thread = models.ForeignKey(ChatThread, on_delete=models.CASCADE, related_name="messages")
-    sender = models.ForeignKey(User, on_delete=models.CASCADE)
-    text = models.TextField(blank=True, default="")
-    qr_code_url = models.URLField(blank=True, default="")  # admin can send QR link
-    created_at = models.DateTimeField(auto_now_add=True)
+    """ข้อความในแชท"""
+    room = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    message = models.TextField()
+    image = models.ImageField(upload_to='chat_images/', blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.sender.username}: {self.message[:50]}"
+    
+    class Meta:
+        ordering = ['timestamp']

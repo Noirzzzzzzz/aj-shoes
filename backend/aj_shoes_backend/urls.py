@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/coupons/", include("coupons.urls")),
     path("api/orders/", include("orders.urls")),
     path("api/chat/", include("chat.urls")),
+    path("api/notifications/", include("notifications.urls")),
 
     # NEW: Admin API
     path("api/admin/", include("aj_shoes_backend.urls_admin")),

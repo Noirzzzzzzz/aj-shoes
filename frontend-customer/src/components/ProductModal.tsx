@@ -128,11 +128,11 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
   /** ========= cart ========= **/
   const canAdd = !!user && !!selected && qty > 0 && (selected?.stock ?? 0) > 0;
   async function addToCart() {
-    if (!user) { toast.error("please_login"); return; }
-    if (!selected) { toast.error("select_options"); return; }
-    if ((selected as any).stock <= 0) { toast.error("out_of_stock"); return; }
+    if (!user) { toast.error("กรุณาเข้าสู่ระบบ"); return; }
+    if (!selected) { toast.error("กรุณาเลือก สี/ไซส์ ให้ครบก่อน"); return; }
+    if ((selected as any).stock <= 0) { toast.error("สินค้าหมด"); return; }
     await api.post("/api/orders/cart/", { product: (p as any).id, variant: (selected as any).id, quantity: qty });
-    toast.success("Added to cart");
+    toast.success("เพิ่มสินค้าลงตะกร้าแล้ว");
   }
 
   type ReviewItem = { id: number; username: string; rating: number; comment: string; created_at: string };
@@ -290,7 +290,7 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
 
             {/* จำนวน */}
             {selected && (selected as any).stock <= 0 && (
-              <div className="text-red-400 text-sm">{"out_of_stock"}</div>
+              <div className="text-red-400 text-sm">{"สินค้าหมด"}</div>
             )}
             <div className="flex items-center gap-3">
               <div className="text-xs">Qty</div>
@@ -341,7 +341,7 @@ export default function ProductModal({ p, onClose }:{ p: Product; onClose: () =>
                 onClick={addToCart}
                 className={`px-4 py-2 rounded font-semibold ${canAdd ? "bg-emerald-600 hover:bg-emerald-500" : "bg-zinc-700 cursor-not-allowed"}`}
               >
-                {"add_to_cart"}
+                {"เพิ่มลงตะกร้า"}
               </button>
               <button onClick={onClose} className="px-4 py-2 rounded bg-zinc-800 hover:bg-zinc-700">Close</button>
             </div>

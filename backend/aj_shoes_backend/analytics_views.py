@@ -182,7 +182,7 @@ class ExportCSVView(APIView):
     def get(self, request):
         items = _export_items_queryset(request)
         # CSV header
-        header = ["order_id","created_at","product_id","name_en","brand","category","color","size_eu","size_cm","quantity","price","line_total","coupon"]
+        header = ["order_id","created_at","product_id","name","brand","category","color","size_eu","size_cm","quantity","price","line_total","coupon"]
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = "attachment; filename=ajshoes_sales.csv"
         writer = csv.writer(resp)
@@ -193,7 +193,7 @@ class ExportCSVView(APIView):
                 it.order_id,
                 it.order.created_at.isoformat(),
                 it.product_id,
-                it.product.name_en,
+                it.product.name,
                 getattr(it.product.brand, "name", ""),
                 getattr(it.product.category, "name", ""),
                 it.variant.color,
@@ -217,7 +217,7 @@ class ExportXLSXView(APIView):
         wb = Workbook()
         ws = wb.active
         ws.title = "Sales"
-        header = ["order_id","created_at","product_id","name_en","brand","category","color","size_eu","size_cm","quantity","price","line_total","coupon"]
+        header = ["order_id","created_at","product_id","name","brand","category","color","size_eu","size_cm","quantity","price","line_total","coupon"]
         ws.append(header)
         for it in items:
             line_total = (it.price or 0) * it.quantity
@@ -225,7 +225,7 @@ class ExportXLSXView(APIView):
                 it.order_id,
                 it.order.created_at.isoformat(),
                 it.product_id,
-                it.product.name_en,
+                it.product.name,
                 getattr(it.product.brand, "name", ""),
                 getattr(it.product.category, "name", ""),
                 it.variant.color,
@@ -248,7 +248,7 @@ class ExportStockCSVView(APIView):
     def get(self, request):
         from catalog.models import Variant
         from django.http import StreamingHttpResponse
-        header = ["product_id","name_en","brand","category","color","size_eu","size_cm","stock"]
+        header = ["product_id","name","brand","category","color","size_eu","size_cm","stock"]
         resp = HttpResponse(content_type="text/csv; charset=utf-8")
         resp["Content-Disposition"] = "attachment; filename=ajshoes_stock.csv"
         writer = csv.writer(resp)
@@ -257,7 +257,7 @@ class ExportStockCSVView(APIView):
         for v in qs:
             writer.writerow([
                 v.product_id,
-                v.product.name_en,
+                v.product.name,
                 getattr(v.product.brand, "name", ""),
                 getattr(v.product.category, "name", ""),
                 v.color, v.size_eu, v.size_cm,

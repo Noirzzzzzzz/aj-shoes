@@ -35,7 +35,7 @@ function WishlistInner() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 space-y-4">
       {/* ✅ เปลี่ยนชื่อหัวข้อ */}
-      <h1 className="text-xl font-bold">Favorites</h1>
+      <h1 className="text-xl font-bold">รายการโปรด</h1>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {list.map(p => <ProductCard key={p.id} p={p} onClick={() => setSel(p)} />)}
       </div>

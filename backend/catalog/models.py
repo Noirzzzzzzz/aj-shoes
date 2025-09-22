@@ -24,10 +24,8 @@ class Product(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name="products")
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products", null=True, blank=True)
 
-    name_en = models.CharField(max_length=255)
-    name_th = models.CharField(max_length=255, blank=True, default="")
-    description_en = models.TextField(blank=True, default="")
-    description_th = models.TextField(blank=True, default="")
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
 
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     sale_percent = models.PositiveIntegerField(default=0)
@@ -40,7 +38,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.name_en
+        return self.name or f"Product #{self.pk}"
 
     @property
     def sale_price(self):

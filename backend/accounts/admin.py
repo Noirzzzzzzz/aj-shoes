@@ -1,16 +1,24 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from .models import AdminNotification
+from .models import AdminNotification, SecurityQuestion
 
 User = get_user_model()
 
+@admin.register(SecurityQuestion)
+class SecurityQuestionAdmin(admin.ModelAdmin):
+    list_display = ("id", "question", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("question",)
+    ordering = ("id",)
+
+
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    # เพิ่ม first_name, last_name ในหน้า list
-    list_display = ("id", "username", "email", "first_name", "last_name", "role")
+    # เพิ่ม first_name, last_name และ security_question
+    list_display = ("id", "username", "email", "first_name", "last_name", "role", "security_question")
     list_filter = ("role",)
-    # ค้นหาได้ทั้งชื่อ/นามสกุล ด้วย
     search_fields = ("username", "email", "first_name", "last_name")
+
 
 @admin.register(AdminNotification)
 class AdminNotificationAdmin(admin.ModelAdmin):

@@ -1,4 +1,4 @@
-// Cart.tsx — Clean Version with Real-time Coupon Updates
+// Cart.tsx — Remove checked items & coupons from cart state right after checkout
 import { useEffect, useMemo, useRef, useState } from "react";
 import Protected from "@/components/Protected";
 import api from "@/api/client";
@@ -72,7 +72,7 @@ function PaymentRequired({
   onCancel: () => void;
   actualTotal?: number;
 }) {
-    const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
+  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isExpired, setIsExpired] = useState(false);
@@ -96,7 +96,7 @@ function PaymentRequired({
   }, [order]);
 
   const uploadPaymentSlip = async () => {
-    if (!paymentSlip) return alert("Please select a payment slip image");
+    if (!paymentSlip) return alert("กรุณาเลือกภาพสลิปการชำระเงิน");
     setUploading(true);
     try {
       const fd = new FormData();
@@ -104,24 +104,24 @@ function PaymentRequired({
       await api.post(`/api/orders/orders/${order.id}/upload-payment/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      alert("Payment slip uploaded successfully! Please wait for admin verification.");
+      alert("อัปโหลดสลิปเรียบร้อยแล้ว! กรุณารอแอดมินยืนยัน");
       onPaymentComplete();
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "Failed to upload payment slip.");
+      alert(e?.response?.data?.detail || "อัปโหลดสลิปไม่สำเร็จ");
     } finally {
       setUploading(false);
     }
   };
 
   const cancelOrder = async () => {
-    if (!confirm("Cancel this order? Items will be restored to your cart.")) return;
+    if (!confirm("ยกเลิกคำสั่งซื้อ? สินค้าจะถูกคืนเข้าตะกร้า")) return;
     try {
       await api.post(`/api/orders/orders/${order.id}/cancel/`);
       onCancel();
-      alert("Order cancelled successfully. Items restored to cart.");
+      alert("ยกเลิกคำสั่งซื้อแล้ว");
     } catch {
       onCancel();
-      alert("Order cancellation processed. Please check your cart.");
+      alert("ดำเนินการยกเลิกแล้ว กรุณาตรวจสอบตะกร้า");
     }
   };
 
@@ -129,16 +129,12 @@ function PaymentRequired({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-zinc-900 rounded-lg p-8 max-w-md w-full border border-zinc-800 max-h-[90vh] overflow-y-auto">
         <div className="text-center mb-6">
-          <h1 className="text-xl font-bold text-white mb-2">Payment Required</h1>
+          <h1 className="text-xl font-bold text-white mb-2">ชำระเงิน</h1>
           <div className="text-emerald-400 text-2xl font-bold">
-            {"total"}: {fmt.currency(actualTotal || order.total)}
+            ยอดชำระเงินทั้งหมด: {fmt.currency(actualTotal || order.total)}
           </div>
-          {actualTotal && actualTotal !== order.total && (
-            <div className="text-sm text-zinc-400 mt-1 line-through">
-            </div>
-          )}
           <div className="text-sm text-zinc-400 mt-2">
-            Order expires: {new Date(order.payment_deadline).toLocaleString()}
+            คำสั่งซื้อหมดอายุ: {new Date(order.payment_deadline).toLocaleString()}
           </div>
         </div>
 
@@ -149,20 +145,20 @@ function PaymentRequired({
         </div>
 
         <div className="space-y-3 mb-6 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-400">{"bank"}:</span><span className="text-white">{paymentConfig.bank_name}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-400">{"account"}:</span><span className="text-white">{paymentConfig.account_name}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-400">{"number"}:</span><span className="text-white">{paymentConfig.account_number}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Bank:</span><span className="text-white">{paymentConfig.bank_name}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Account:</span><span className="text-white">{paymentConfig.account_name}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Number:</span><span className="text-white">{paymentConfig.account_number}</span></div>
         </div>
 
         <div className="text-center mb-6">
           <div className={`text-lg font-mono ${isExpired ? "text-red-500" : "text-yellow-400"}`}>
-            Time remaining: {timeRemaining}
+            เวลาที่เหลือ: {timeRemaining}
           </div>
-          {isExpired && <div className="text-red-400 text-sm mt-1">Payment deadline expired</div>}
+          {isExpired && <div className="text-red-400 text-sm mt-1">หมดเวลาการชำระเงิน</div>}
         </div>
 
         <div className="mb-6">
-          <label className="block text-sm text-zinc-400 mb-2">Upload Payment Slip:</label>
+          <label className="block text-sm text-zinc-400 mb-2">อัปโหลดสลิปชำระเงิน:</label>
           <input
             ref={inputRef}
             type="file"
@@ -170,7 +166,7 @@ function PaymentRequired({
             onChange={(e) => setPaymentSlip(e.target.files?.[0] || null)}
             className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-emerald-600 file:text-white"
           />
-          {paymentSlip && <div className="text-sm text-green-400 mt-1">Selected: {paymentSlip.name}</div>}
+          {paymentSlip && <div className="text-sm text-green-400 mt-1">เลือก {paymentSlip.name} แล้ว</div>}
         </div>
 
         <div className="space-y-3">
@@ -179,14 +175,14 @@ function PaymentRequired({
             disabled={uploading || isExpired || !paymentSlip}
             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:opacity-50 text-white font-medium py-3 rounded"
           >
-            {uploading ? "Uploading..." : "upload_payment_slip"}
+            {uploading ? "Uploading..." : "ยืนยันการชำระเงิน"}
           </button>
           <button
             onClick={cancelOrder}
             disabled={uploading}
             className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white py-3 rounded"
           >
-            {"cancel_order"} (Order will be cancelled)
+            ยกเลิก
           </button>
         </div>
       </div>
@@ -204,7 +200,6 @@ export default function Cart() {
 }
 
 function CartInner() {
-  
   // cart & selection
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
@@ -260,7 +255,7 @@ function CartInner() {
     const c = imgs.find((i) => i.is_cover) || imgs[0];
     return c?.image_url || "";
   };
-  
+
   const brief = (it: Item) => {
     const v = it.variant_detail || {};
     const color = v.color_label || v.color_name || v.color || "";
@@ -278,12 +273,30 @@ function CartInner() {
     return parts.join(" • ");
   };
 
+  /* ---------- Local prune after checkout ---------- */
+  function pruneAfterCheckout(checkedIds: number[]) {
+    // ตัดสินค้าที่เลือกทิ้งจากตะกร้า
+    setItems((prev) => prev.filter((it) => !checkedIds.includes(it.id)));
+    // ล้างสถานะการเลือก
+    setSelected((prev) => {
+      const next = { ...prev };
+      checkedIds.forEach((id) => delete next[id]);
+      return next;
+    });
+    // เคลียร์คูปองทั้งหมดจากสถานะตะกร้าฝั่ง UI
+    setAppliedCodes([]);
+    setDiscountAmount(0);
+    setDiscountPercent(0);
+    setFreeShipping(false);
+  }
+
   /* ---------- Sync from backend cart ---------- */
   function syncFromServerCart(data: any) {
     const srvShip = typeof data?.shipping_fee === "number" ? Number(data.shipping_fee) : 50;
     setShippingBase(srvShip);
 
-    const isFree = Boolean(data?.free_shipping) || 
+    const isFree =
+      Boolean(data?.free_shipping) ||
       (data?.applied_coupons || []).some((c: any) => c?.discount_type === "free_shipping") ||
       srvShip === 0;
     setFreeShipping(isFree);
@@ -294,9 +307,7 @@ function CartInner() {
     const pct = typeof data?.discount_percent === "number" ? Number(data.discount_percent) : 0;
     setDiscountPercent(pct);
 
-    const acodes = (data?.applied_coupons || [])
-      .map((c: any) => c?.code)
-      .filter(Boolean);
+    const acodes = (data?.applied_coupons || []).map((c: any) => c?.code).filter(Boolean);
     setAppliedCodes(acodes);
   }
 
@@ -368,7 +379,7 @@ function CartInner() {
   /* ---------- Coupon Operations ---------- */
   async function applyPickedCoupons() {
     const codes = [pickPercent, pickFree].filter(Boolean) as string[];
-    
+
     if (codes.length === 0) {
       return setShowPicker(false);
     }
@@ -376,22 +387,22 @@ function CartInner() {
     setApplyingCoupons(true);
 
     try {
-      const response = await api.post("/api/orders/cart/apply-coupon/", { 
-        coupon_codes: codes 
+      const response = await api.post("/api/orders/cart/apply-coupon/", {
+        coupon_codes: codes,
       });
-      
+
       if (response.data) {
-        const hasDiscount = response.data.discount_amount > 0 || 
-                          response.data.free_shipping || 
-                          (response.data.applied_coupons && response.data.applied_coupons.length > 0);
-        
+        const hasDiscount =
+          response.data.discount_amount > 0 ||
+          response.data.free_shipping ||
+          (response.data.applied_coupons && response.data.applied_coupons.length > 0);
+
         if (hasDiscount) {
           syncFromServerCart(response.data);
         } else {
           alert("ไม่สามารถใช้คูปองได้ กรุณาตรวจสอบเงื่อนไข");
         }
       }
-      
     } catch (error: any) {
       console.error("Apply coupon failed:", error);
       alert(`Error: ${error.response?.data?.detail || "ไม่สามารถใช้คูปองได้"}`);
@@ -409,17 +420,16 @@ function CartInner() {
 
     try {
       let response;
-      
+
       if (code) {
         response = await api.post("/api/orders/cart/remove-coupon/", { code });
       } else {
         response = await api.post("/api/orders/cart/remove-coupon/");
       }
-      
+
       if (response.data) {
         syncFromServerCart(response.data);
       }
-      
     } catch (e: any) {
       console.error("Remove coupon failed:", e);
     } finally {
@@ -431,29 +441,36 @@ function CartInner() {
   async function checkout() {
     if (!selectedAddressId) return alert("Please select an address.");
     if (chosen.length === 0) return alert("Select at least 1 item.");
-    
+
     try {
       setPlacing(true);
+
+      const checkedIds = chosen.map((c) => c.id);
       const payload = {
         address_id: selectedAddressId,
         carrier: selectedCarrier || "Kerry",
-        cart_item_ids: chosen.map((c) => c.id),
+        cart_item_ids: checkedIds,
       };
+
       const res = await api.post("/api/orders/cart/checkout/", payload);
-      
+
+      // ✅ ตัดสินค้าที่เลือก + เคลียร์คูปองใน UI ทันที (ไม่รอ reload)
+      pruneAfterCheckout(checkedIds);
+
       if (res.data?.requires_payment) {
         setPaymentOrder(res.data.order);
         setPaymentConfig(res.data.payment_config);
         setShowPayment(true);
       } else {
         alert("Order placed successfully!");
-        setItems([]);
-        setSelected({});
+        // เมื่อไม่มีขั้นตอนชำระเงิน → ไปหน้า orders ได้เลย
         window.location.href = "/orders";
       }
     } catch (err: any) {
       alert(err?.response?.data?.detail || "Checkout failed. Please try again.");
       console.error("checkout error", err?.response || err);
+      // ถ้า error → sync cart ปัจจุบันจากเซิร์ฟเวอร์กลับมา
+      await loadCart();
     } finally {
       setPlacing(false);
     }
@@ -463,22 +480,26 @@ function CartInner() {
     setShowPayment(false);
     setPaymentOrder(null);
     setPaymentConfig(null);
-    setItems([]);
-    setSelected({});
+    // เผื่อ UI ไหนยังค้าง ล้างคูปองอีกรอบก่อนออก
+    setAppliedCodes([]);
+    setDiscountAmount(0);
+    setDiscountPercent(0);
+    setFreeShipping(false);
     window.location.href = "/orders";
   };
-  
+
   const onPaymentCancel = () => {
     setShowPayment(false);
     setPaymentOrder(null);
     setPaymentConfig(null);
+    // ยกเลิกการชำระเงิน → ดึงตะกร้าปัจจุบันจากเซิร์ฟเวอร์ (เผื่อ backend คืนสินค้า/คูปอง)
     loadCart();
   };
 
   /* ---------- UI ---------- */
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-4">
-      <h1 className="text-xl font-bold">{"cart"}</h1>
+      <h1 className="text-xl font-bold">ตะกร้าสินค้า</h1>
 
       <div className="grid md:grid-cols-3 gap-4">
         {/* Items */}
@@ -496,7 +517,7 @@ function CartInner() {
               }}
             />
             <span className="opacity-80">
-              Select all{" "}
+              เลือกทั้งหมด{" "}
               <span className="opacity-60">
                 ({items.filter((it) => selected[it.id]).length}/{items.length})
               </span>
@@ -504,7 +525,7 @@ function CartInner() {
           </div>
 
           {items.length === 0 ? (
-            <div className="text-zinc-400">{"Your cart is empty."}</div>
+            <div className="text-zinc-400">ไม่มีสินค้าในตะกร้า</div>
           ) : (
             items.map((it) => (
               <div key={it.id} className="flex items-center gap-3 p-3 rounded border border-zinc-800 bg-zinc-900">
@@ -537,7 +558,7 @@ function CartInner() {
                   className="w-20 bg-zinc-900 border border-zinc-700 rounded px-2 py-1"
                 />
                 <button onClick={() => removeItem(it.id)} className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700">
-                  Remove
+                  ลบ
                 </button>
               </div>
             ))
@@ -548,14 +569,14 @@ function CartInner() {
         <div className="p-4 rounded border border-zinc-800 bg-zinc-900 space-y-3">
           {/* Address */}
           <div className="space-y-2">
-            <div className="text-sm text-zinc-400">Shipping address</div>
+            <div className="text-sm text-zinc-400">ที่อยู่จัดส่ง</div>
             <select
               className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1"
               value={selectedAddressId ?? ""}
               onChange={(e) => setSelectedAddressId(e.target.value ? Number(e.target.value) : null)}
             >
               {addresses.length === 0 ? (
-                <option value="">No address — add in Profile</option>
+                <option value="">ไม่มีที่อยู่ — เพิ่มในโปรไฟล์</option>
               ) : (
                 addresses.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -568,7 +589,7 @@ function CartInner() {
 
           {/* Carrier */}
           <div className="space-y-2">
-            <div className="text-sm text-zinc-400">Carrier</div>
+            <div className="text-sm text-zinc-400">เลือกผู้จัดส่ง</div>
             <select
               className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1"
               value={selectedCarrier}
@@ -583,8 +604,8 @@ function CartInner() {
 
           {/* Coupon Section */}
           <div className="space-y-2">
-            <div className="text-sm text-zinc-400">Coupons</div>
-            
+            <div className="text-sm text-zinc-400">เลือกส่วนลด</div>
+
             {/* Coupon Bar */}
             <div className="w-full rounded bg-zinc-950 border border-zinc-700 px-3 py-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -607,7 +628,7 @@ function CartInner() {
                     </span>
                   ))
                 ) : (
-                  <span className="text-sm text-zinc-400">ยังไม่ได้เลือกคูปอง</span>
+                  <span className="text-sm text-zinc-400">ยังไม่ได้เลือกส่วนลด</span>
                 )}
 
                 {/* Buttons */}
@@ -650,23 +671,23 @@ function CartInner() {
           {/* Totals */}
           <div className="border-t border-zinc-800 pt-3 space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Subtotal</span>
+              <span>สินค้าราคา</span>
               <span>{fmt.currency(subtotal)}</span>
             </div>
             {discountAmount > 0 && (
               <div className="flex justify-between text-sm text-rose-300">
-                <span>Discount{discountPercent ? ` (${discountPercent}%)` : ""}</span>
+                <span>ลดราคา{discountPercent ? ` (${discountPercent}%)` : ""}</span>
                 <span>-{fmt.currency(discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm">
-              <span>Shipping{freeShipping ? " (free)" : ""}</span>
+              <span>ค่าจัดส่ง{freeShipping ? " (free)" : ""}</span>
               <span className={freeShipping ? "text-emerald-400 line-through" : ""}>
                 {fmt.currency(effectiveShipping)}
               </span>
             </div>
             <div className="flex justify-between font-semibold text-lg text-emerald-400 border-t border-zinc-700 pt-2">
-              <span>Total</span>
+              <span>ยอดชำระเงินทั้งหมด</span>
               <span>{fmt.currency(total)}</span>
             </div>
           </div>
@@ -676,13 +697,11 @@ function CartInner() {
             onClick={checkout}
             className="w-full px-4 py-3 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 font-medium"
           >
-            {placing ? "Processing..." : "Checkout"}
+            {placing ? "กำลังดำเนินการ..." : "ชำระเงิน"}
           </button>
 
           {chosen.length === 0 && items.length > 0 && (
-            <p className="text-xs text-amber-400 text-center">
-              กรุณาเลือกสินค้าอย่างน้อย 1 รายการ
-            </p>
+            <p className="text-xs text-amber-400 text-center">กรุณาเลือกสินค้าอย่างน้อย 1 รายการ</p>
           )}
         </div>
       </div>
@@ -690,11 +709,11 @@ function CartInner() {
       {/* Coupon Picker Modal */}
       {showPicker && (
         <div className="fixed inset-0 bg-black/60 z-50 grid place-items-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-2xl p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w/full max-w-2xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold">เลือกคูปองของฉัน</h3>
-              <button 
-                onClick={() => setShowPicker(false)} 
+              <h3 className="text-lg font-semibold">เลือกส่วนลด</h3>
+              <button
+                onClick={() => setShowPicker(false)}
                 disabled={applyingCoupons}
                 className="text-sm text-zinc-400 hover:text-white disabled:opacity-50"
               >
@@ -706,8 +725,8 @@ function CartInner() {
               <div className="border border-zinc-800 rounded p-3">
                 <div className="font-medium mb-2">ส่วนลด (%)</div>
                 <div className="space-y-2 max-h-64 overflow-auto pr-1">
-                  {myPercent.length === 0 && <div className="text-zinc-500 text-sm">ไม่มีคูปองส่วนลด</div>}
-                  {myPercent.map(c => (
+                  {myPercent.length === 0 && <div className="text-zinc-500 text-sm">ไม่มีโค้ดส่วนลด</div>}
+                  {myPercent.map((c) => (
                     <label key={c.id} className="flex items-center gap-2 text-sm">
                       <input
                         type="radio"
@@ -717,8 +736,12 @@ function CartInner() {
                         disabled={applyingCoupons}
                       />
                       <div className="flex-1">
-                        <div className="font-semibold">{c.code} — {c.percent_off}%</div>
-                        {c.valid_to && <div className="text-xs text-zinc-400">หมดอายุ: {new Date(c.valid_to).toLocaleString()}</div>}
+                        <div className="font-semibold">
+                          {c.code} — {c.percent_off}%
+                        </div>
+                        {c.valid_to && (
+                          <div className="text-xs text-zinc-400">หมดอายุ: {new Date(c.valid_to).toLocaleString()}</div>
+                        )}
                       </div>
                     </label>
                   ))}
@@ -728,8 +751,8 @@ function CartInner() {
               <div className="border border-zinc-800 rounded p-3">
                 <div className="font-medium mb-2">ส่งฟรี</div>
                 <div className="space-y-2 max-h-64 overflow-auto pr-1">
-                  {myFree.length === 0 && <div className="text-zinc-500 text-sm">ไม่มีคูปองส่งฟรี</div>}
-                  {myFree.map(c => (
+                  {myFree.length === 0 && <div className="text-zinc-500 text-sm">ไม่มีโค้ดส่งฟรี</div>}
+                  {myFree.map((c) => (
                     <label key={c.id} className="flex items-center gap-2 text-sm">
                       <input
                         type="radio"
@@ -740,7 +763,9 @@ function CartInner() {
                       />
                       <div className="flex-1">
                         <div className="font-semibold">{c.code}</div>
-                        {c.valid_to && <div className="text-xs text-zinc-400">หมดอายุ: {new Date(c.valid_to).toLocaleString()}</div>}
+                        {c.valid_to && (
+                          <div className="text-xs text-zinc-400">หมดอายุ: {new Date(c.valid_to).toLocaleString()}</div>
+                        )}
                       </div>
                     </label>
                   ))}
@@ -749,15 +774,15 @@ function CartInner() {
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
-              <button 
-                onClick={() => setShowPicker(false)} 
+              <button
+                onClick={() => setShowPicker(false)}
                 disabled={applyingCoupons}
                 className="px-4 py-2 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50"
               >
                 ยกเลิก
               </button>
-              <button 
-                onClick={applyPickedCoupons} 
+              <button
+                onClick={applyPickedCoupons}
                 disabled={applyingCoupons || (!pickPercent && !pickFree)}
                 className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
               >
@@ -769,6 +794,7 @@ function CartInner() {
       )}
 
       {/* Payment Modal */}
+      {showPicker && null}
       {showPayment && paymentOrder && paymentConfig && (
         <PaymentRequired
           order={paymentOrder}

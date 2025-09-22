@@ -1,10 +1,9 @@
-# catalog/views.py  (drop-in patch: เพิ่มคลาส ProductSuggest + import ที่ต้องใช้)
+# catalog/views.py
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.core.cache import cache
 
-# ⬇️ เพิ่ม import
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from django.db.models import Q, CharField
@@ -19,9 +18,51 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Brand.objects.all().order_by("name")
     serializer_class = BrandSerializer
 
+    # GET /api/catalog/brands/rows/?limit=12
+    @action(detail=False, methods=["get"])
+    def rows(self, request):
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 12)), 24))
+        except Exception:
+            limit = 12
+
+        brands = Brand.objects.filter(products__is_active=True).distinct().order_by("name")
+        rows = []
+        for b in brands:
+            qs = (Product.objects.filter(is_active=True, brand=b)
+                  .select_related("brand", "category")
+                  .prefetch_related("images", "variants")
+                  .order_by("-popularity", "-updated_at", "id")[:limit])
+            rows.append({
+                "title": b.name,
+                "products": ProductSerializer(qs, many=True, context={"request": request}).data
+            })
+        return Response({"rows": rows})
+
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Category.objects.all().order_by("name")
     serializer_class = CategorySerializer
+
+    # GET /api/catalog/categories/rows/?limit=12
+    @action(detail=False, methods=["get"])
+    def rows(self, request):
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 12)), 24))
+        except Exception:
+            limit = 12
+
+        cats = Category.objects.filter(products__is_active=True).distinct().order_by("name")
+        rows = []
+        for c in cats:
+            qs = (Product.objects.filter(is_active=True, category=c)
+                  .select_related("brand", "category")
+                  .prefetch_related("images", "variants")
+                  .order_by("-popularity", "-updated_at", "id")[:limit])
+            rows.append({
+                "title": c.name,
+                "products": ProductSerializer(qs, many=True, context={"request": request}).data
+            })
+        return Response({"rows": rows})
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (
@@ -31,14 +72,13 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     )
     serializer_class = ProductSerializer
     filterset_class = ProductFilter
-    search_fields = ["name_en","name_th","description_en","description_th","brand__name"]
+    search_fields = ["name", "description",]
     ordering_fields = ["base_price","popularity","sale_percent"]
     ordering = ["-popularity"]
 
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
 
-        # ?ids=1,2,3
         ids = request.query_params.get("ids")
         if ids:
             try:
@@ -70,41 +110,32 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             cache.set(cache_key, data, 60)
         return Response(data)
 
-# ⬇️ ใหม่: เบา/เร็วสำหรับ autocomplete
 class ProductSuggest(APIView):
-    """
-    GET /api/catalog/suggest/?q=<text>&limit=8
-    คืน [{"id": 123, "label": "Nike Air Force 1 — Nike", "value": "Nike Air Force 1"}, ...]
-    """
     permission_classes = [AllowAny]
-
     def get(self, request, *args, **kwargs):
         q = (request.query_params.get("q") or "").strip()
         try:
             limit = max(1, min(int(request.query_params.get("limit", 8)), 20))
         except Exception:
             limit = 8
-
         if not q:
             return Response([])
 
-        # หาในสินค้า (ชื่อ/แบรนด์/หมวด)
         qs = (
             Product.objects.select_related("brand", "category")
             .filter(
-                Q(name_en__icontains=q)
-                | Q(name_th__icontains=q)
+                Q(name__icontains=q)
+                | Q(description__icontains=q)
                 | Q(brand__name__icontains=q)
                 | Q(category__name__icontains=q)
             )
-            .annotate(label=Concat("name_en", V(" — "), "brand__name", output_field=CharField()))
-            .order_by("-popularity", "name_en")[: limit * 2]
+            .annotate(label=Concat("name", V(" — "), "brand__name", output_field=CharField()))
+            .order_by("-popularity", "name")[: limit * 2]
         )
 
-        results = []
-        seen = set()
+        results, seen = [], set()
         for p in qs:
-            value = (p.name_en or p.name_th or "").strip()
+            value = (p.name or "").strip()
             if not value:
                 continue
             key = value.lower()
@@ -115,7 +146,6 @@ class ProductSuggest(APIView):
             if len(results) >= limit:
                 break
 
-        # เติมชื่อแบรนด์/หมวดเป็นคำเดา ถ้ายังไม่ครบ limit
         if len(results) < limit:
             for b in Brand.objects.filter(name__icontains=q).order_by("name")[: limit]:
                 name = b.name.strip()

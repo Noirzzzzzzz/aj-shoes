@@ -1,4 +1,4 @@
-// App.tsx — READY TO REPLACE
+// App.tsx — PATCH (ready-to-replace เฉพาะส่วน Routes)
 import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
@@ -14,8 +14,9 @@ import Chat from "./pages/Chat";
 import { AuthProvider } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
 import ProductReviews from "./pages/ProductReviews";
-// ✅ import หน้าใหม่
 import CouponCenter from "./pages/CouponCenter";
+import Brand from "./pages/Brand";
+import Categorys from "./pages/Categorys";
 
 export default function App() {
   return (
@@ -33,10 +34,20 @@ export default function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/chat" element={<Chat />} />
-          {/* ✅ เส้นทางใหม่ */}
+
+          {/* หน้าใหม่ */}
           <Route path="/coupons" element={<CouponCenter />} />
           <Route path="/product/:id/reviews" element={<ProductReviews />} />
-          <Route path="*" element={<Navigate to="/" />} />
+
+          {/* ✅ รองรับทั้งเอกพจน์และพหูพจน์ */}
+          <Route path="/brand" element={<Brand />} />
+          <Route path="/brands" element={<Navigate to="/brand" replace />} />
+
+          <Route path="/category" element={<Categorys />} />
+          <Route path="/categories" element={<Navigate to="/category" replace />} />
+
+          {/* ไว้ท้ายสุดเสมอ */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" />
       </div>

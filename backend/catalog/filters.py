@@ -14,25 +14,26 @@ class ProductFilter(filters.FilterSet):
     search = filters.CharFilter(method="filter_search")
 
     brand = filters.CharFilter(field_name="brand__name", lookup_expr="iexact")
+    category = filters.CharFilter(field_name="category__name", lookup_expr="iexact")  # ✅ ใหม่
+    brand_id = filters.NumberFilter(field_name="brand_id")                              # ทางเลือก
+    category_id = filters.NumberFilter(field_name="category_id")                        # ทางเลือก
     min_price = filters.NumberFilter(field_name="base_price", lookup_expr="gte")
     max_price = filters.NumberFilter(field_name="base_price", lookup_expr="lte")
 
-    # รับทั้ง ?discount_only=1 / true / on
     discount_only = filters.CharFilter(method="filter_discount_only")
-    on_sale = filters.CharFilter(method="filter_discount_only")  # alias
+    on_sale = filters.CharFilter(method="filter_discount_only")
 
     class Meta:
         model = Product
-        fields = ["brand", "min_price", "max_price", "discount_only", "on_sale"]
+        fields = ["brand", "category", "brand_id", "category_id",
+                  "min_price", "max_price", "discount_only", "on_sale"]
 
     def filter_search(self, qs, name, value: str):
         if not value:
             return qs
         return qs.filter(
-            Q(name_en__icontains=value)
-            | Q(name_th__icontains=value)
-            | Q(description_en__icontains=value)
-            | Q(description_th__icontains=value)
+            Q(name__icontains=value)
+            | Q(description__icontains=value)
             | Q(brand__name__icontains=value)
             | Q(category__name__icontains=value)
         ).distinct()

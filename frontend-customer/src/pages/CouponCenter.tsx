@@ -95,7 +95,7 @@ export default function CouponCenter() {
             : c
         )
       );
-      alert(e?.response?.data?.detail || "เก็บคูปองไม่สำเร็จ");
+      alert(e?.response?.data?.detail || "โปรดเข้าสู่ระบบก่อนเก็บคูปอง");
     }
   }
 
@@ -105,12 +105,12 @@ export default function CouponCenter() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-      <h1 className="text-2xl font-bold">{"Coupons"}</h1>
+      <h1 className="text-2xl font-bold">{"ส่วนลด"}</h1>
 
       {loading ? (
-        <div>Loading...</div>
+        <div>กำลังโหลด...</div>
       ) : coupons.length === 0 ? (
-        <div className="text-zinc-400">ยังไม่มีคูปองที่แจกอยู่ในขณะนี้</div>
+        <div className="text-zinc-400">ยังไม่มีส่วนลดที่แจกอยู่ในขณะนี้</div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {coupons.map((c) => (

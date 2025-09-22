@@ -12,13 +12,23 @@ function mediaUrl(path?: string): string | "" {
   const base = (import.meta as any).env?.VITE_MEDIA_URL || "/media/";
   return `${String(base).replace(/\/$/, "")}/${String(path).replace(/^\//, "")}`;
 }
-function productCoverSrc(p: Product, w = 256, h = 256, q = 80): string {
-  const cover = (p.images || []).find((im: any) => im.is_cover) || p.images?.[0];
+
+// รองรับทั้ง schema ใหม่ (name) และของเดิม (name_en/name_th)
+function productName(p: any): string {
+  return (p?.name || p?.name_en || p?.name_th || "").trim();
+}
+
+function productCoverSrc(p: any, w = 256, h = 256, q = 80): string {
+  const cover = (p?.images || []).find((im: any) => im?.is_cover) || p?.images?.[0];
   if (!cover) return "";
-  const fileSrc = mediaUrl((cover as any).file);
+
+  // ถ้ามีไฟล์ใน media
+  const fileSrc = mediaUrl(cover.file);
   if (fileSrc) return fileSrc;
-  const u = (cover as any).image_url || "";
-  return u ? optImg(u, { w, h, fit: "cover", q }) : "";
+
+  // รองรับทั้ง url_source (ของจริงใน backend) และ image_url (ชื่อเก่าที่บางที่ยังส่งมา)
+  const remote = cover.url_source || cover.image_url || "";
+  return remote ? optImg(remote, { w, h, fit: "cover", q }) : "";
 }
 
 export default function ProductCard({
@@ -30,6 +40,7 @@ export default function ProductCard({
   onClick: () => void;
   showFavorite?: boolean;
 }) {
+  const name = productName(p as any);
   const src = productCoverSrc(p);
   const { isFav, toggle } = useFavorites();
   const fav = useMemo(() => isFav(p.id), [isFav, p.id]);
@@ -38,7 +49,7 @@ export default function ProductCard({
     <button
       onClick={onClick}
       className="relative block min-w-40 w-40 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-left overflow-hidden"
-      aria-label={p.name_en}
+      aria-label={name}
     >
       {/* Favorite */}
       {showFavorite && (
@@ -74,7 +85,7 @@ export default function ProductCard({
         {src && (
           <img
             src={src}
-            alt={p.name_en}
+            alt={name}
             className="max-h-full max-w-full object-contain"
             loading="lazy"
             draggable={false}
@@ -86,7 +97,7 @@ export default function ProductCard({
       <div className="p-2 space-y-1">
         {/* ชื่อ: บรรทัดเดียว + ... */}
         <div className="text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
-          {p.name_en}
+          {name}
         </div>
 
         <Price base={p.base_price} salePercent={p.sale_percent} salePrice={p.sale_price} />

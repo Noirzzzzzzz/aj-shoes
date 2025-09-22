@@ -41,12 +41,12 @@ class VariantInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "name_en", "brand",
+        "id", "name", "brand",
         "base_price", "sale_percent",
         "popularity", "is_active", "is_recommended",  # ✅ โชว์ในตาราง
     )
     list_filter = ("brand", "category", "is_active", "is_recommended")  # ✅ filter
-    search_fields = ("name_en", "name_th")
+    search_fields = ("name" "brand__name", "category__name")  # ✅ แก้ search
     inlines = [ProductImageInline, VariantInline]
     list_editable = ("is_active", "is_recommended")  # ✅ แก้ได้จาก list view
 

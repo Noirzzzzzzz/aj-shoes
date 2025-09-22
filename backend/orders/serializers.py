@@ -8,12 +8,40 @@ from coupons.models import Coupon
 
 
 # ---------- Product (Brief) with images ----------
-class ProductBriefSerializer(serializers.ModelSerializer):
+class ProductBriefSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name_en = serializers.SerializerMethodField()
+    base_price = serializers.SerializerMethodField()
+    sale_price = serializers.SerializerMethodField()
+    sale_percent = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
 
-    class Meta:
-        model = Product
-        fields = ["id", "name_en", "base_price", "sale_price", "sale_percent", "images"]
+    # ----- safe getters -----
+    def get_name_en(self, obj):
+        # รองรับหลายชื่อฟิลด์ (เผื่อโมเดล/serializer ตัวอื่น)
+        return (
+            getattr(obj, "name", None)
+            or getattr(obj, "name", None)
+            or getattr(obj, "title", "")
+            or ""
+        )
+
+    def get_base_price(self, obj):
+        val = getattr(obj, "base_price", None)
+        return str(val) if val is not None else "0"
+
+    def get_sale_price(self, obj):
+        # รองรับทั้ง property และฟิลด์จริง
+        val = getattr(obj, "sale_price", None)
+        if val is not None:
+            return str(val)
+        # คิดสำรองจาก base + sale_percent
+        base = float(getattr(obj, "base_price", 0) or 0)
+        percent = int(getattr(obj, "sale_percent", 0) or 0)
+        return str(round(base * (100 - percent) / 100, 2))
+
+    def get_sale_percent(self, obj):
+        return int(getattr(obj, "sale_percent", 0) or 0)
 
     def get_images(self, obj):
         """
@@ -21,7 +49,7 @@ class ProductBriefSerializer(serializers.ModelSerializer):
         - obj.images (เช่น related_name="images")
         - obj.product_images
         - obj.productimage_set (default related_name)
-        และ map ให้อยู่ในรูปแบบ [{image_url, is_cover}] พร้อม full URL
+        และ map ให้อยู่ในรูป [{image_url, is_cover}] พร้อมทำเป็น absolute URL ได้
         """
         rel_qs = None
         for attr in ("images", "product_images", "productimage_set"):
@@ -30,43 +58,27 @@ class ProductBriefSerializer(serializers.ModelSerializer):
                 rel_qs = list(rel.all()) if hasattr(rel, "all") else list(rel)
                 if rel_qs:
                     break
-
         rel_qs = rel_qs or []
 
         out = []
+        request = self.context.get("request")
         for im in rel_qs:
-            url = getattr(im, "image_url", None)
+            url = getattr(im, "image_url", None) or getattr(im, "url", None)
             if not url:
-                url = getattr(im, "url", None)
-            if not url:
-                img_field = getattr(im, "image", None)
-                if hasattr(img_field, "url"):
-                    url = img_field.url
-            if not url:
-                for field_name in ['file', 'photo', 'picture']:
-                    field_val = getattr(im, field_name, None)
-                    if field_val and hasattr(field_val, 'url'):
-                        url = field_val.url
+                for f in ("image", "file", "photo", "picture"):
+                    val = getattr(im, f, None)
+                    if val and hasattr(val, "url"):
+                        url = val.url
                         break
-                        
             if not url:
                 continue
 
-            if url.startswith('/'):
-                request = self.context.get('request')
-                if request:
-                    url = request.build_absolute_uri(url)
-                else:
-                    from django.conf import settings
-                    domain = getattr(settings, 'SITE_URL', 'http://localhost:8000')
-                    url = domain.rstrip('/') + url
-
-            out.append(
-                {
-                    "image_url": url,
-                    "is_cover": bool(getattr(im, "is_cover", False)),
-                }
-            )
+            if url.startswith("/") and request:
+                url = request.build_absolute_uri(url)
+            out.append({
+                "image_url": url,
+                "is_cover": bool(getattr(im, "is_cover", False)),
+            })
         return out
 
 

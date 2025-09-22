@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import Protected from "@/components/Protected";
 import api from "@/api/client";
+import { FaImage } from "react-icons/fa";
+import { IoIosSend } from "react-icons/io";
 
 /* ---------- Types ---------- */
 interface User {
@@ -321,7 +323,7 @@ function ChatInner() {
   /* ---------- Layouts ---------- */
   if (loading) {
     return (
-      <main className="h-screen bg-gray-950 text-gray-200 flex items-center justify-center">
+      <main className="h-screen bg-gray-1000 text-gray-200 flex items-center justify-center">
         <div className="animate-pulse text-sm opacity-80">Loading chat…</div>
       </main>
     );
@@ -330,8 +332,8 @@ function ChatInner() {
   // ลูกค้า
   if (user?.role === "customer" && selectedRoom) {
     return (
-      <main className="h-screen flex flex-col bg-gray-950 text-gray-100">
-        <Header title="Support Chat" subtitle="Chat with our support team" wsStatus={wsStatus} />
+      <main className="h-screen flex flex-col bg-gray-1000 text-gray-100">
+        <Header title="ติดต่อสอบถาม" subtitle="สอบถามกับทีมสนับสนุนของเรา" wsStatus={wsStatus} />
         <MessageList meId={user.id} messages={messages} endRef={messagesEndRef} variant="customer" />
         <Composer
           value={newMessage}
@@ -352,11 +354,11 @@ function ChatInner() {
 
   // แอดมิน
   return (
-    <main className="h-screen bg-gray-950 text-gray-100 flex">
+    <main className="h-screen bg-gray-1000 text-gray-100 flex">
       <aside className="w-80 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
-          <h1 className="text-xl font-semibold">Chat Admin</h1>
-          <p className="text-xs text-gray-400 mt-1">{rooms.length} conversations</p>
+          <h1 className="text-xl font-semibold">แชทของแอดมิน</h1>
+          <p className="text-xs text-gray-400 mt-1">{rooms.length} ห้องแชท</p>
         </div>
         <div className="flex-1 overflow-auto">
           {rooms.map((room) => {
@@ -422,8 +424,8 @@ function ChatInner() {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center text-gray-400">
-              <p className="text-lg">Select a conversation</p>
-              <p className="text-sm">Choose a chat room to start messaging</p>
+              <p className="text-lg">เลือกห้องแชท</p>
+              <p className="text-sm">เลือกห้องแชทเพื่อเริ่มส่งข้อความ</p>
             </div>
           </div>
         )}
@@ -488,7 +490,7 @@ function MessageList({
   variant: "customer" | "admin";
 }) {
   return (
-    <div className="flex-1 overflow-auto p-4 space-y-3 bg-gray-950">
+    <div className="flex-1 overflow-auto p-4 space-y-3 bg-gray-1000">
       {messages.map((m) => {
         const mine =
           variant === "customer" ? m.sender === meId : !m.is_admin;
@@ -566,7 +568,7 @@ function Composer({
 
   return (
     <div
-      className={`p-4 border-t border-gray-800 bg-gray-950 ${dragOver ? "bg-gray-900/70" : ""}`}
+      className={`p-4 border-t border-gray-800 bg-gray-1000 ${dragOver ? "bg-gray-1000" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragOver(true);
@@ -594,7 +596,7 @@ function Composer({
           onClick={pickFile}
           className="px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 hover:bg-gray-700 text-sm"
         >
-          แนบรูป
+          <FaImage />
         </button>
 
         <input
@@ -609,9 +611,9 @@ function Composer({
         <button
           onClick={onSend}
           disabled={disabled || (!value.trim() && !imagePreview)}
-          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-xl bg-gray-800 border border-gray-700 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          ส่ง
+          <IoIosSend />
         </button>
 
         <input

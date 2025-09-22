@@ -24,9 +24,9 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 space-y-8">
-      <ProductRow title={"recommended"} products={rows.recommended} />
-      <ProductRow title={"trending"} products={rows.trending} />
-      <ProductRow title={"personalized"} products={rows.personalized} />
+      <ProductRow title={"สินค้าแนะนำ"} products={rows.recommended} />
+      <ProductRow title={"สินค้ากำลังมาแรง"} products={rows.trending} />
+      <ProductRow title={"เหมาะกับคุณ"} products={rows.personalized} />
     </main>
   );
 }

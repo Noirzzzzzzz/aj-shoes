@@ -49,10 +49,10 @@ class PaymentConfig(models.Model):
 
 class Order(models.Model):
     class Status(models.TextChoices):
-        PENDING_PAYMENT = "pending_payment", "Pending Payment"
-        PENDING = "pending", "Pending"
-        SHIPPED = "shipped", "Shipped"
-        DELIVERED = "delivered", "Delivered"
+        PENDING_PAYMENT = "pending_payment", "รอชำระเงิน"
+        PAYMENT_VERIFIED = "payment_verified", "ยืนยันการชำระแล้ว"
+        SHIPPED = "shipped", "จัดส่งแล้ว"
+        DELIVERED = "delivered", "ส่งถึงแล้ว"
         # ลบ CANCELLED ออกเลย
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")

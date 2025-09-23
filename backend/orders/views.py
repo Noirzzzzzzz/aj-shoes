@@ -225,25 +225,33 @@ class CartViewSet(viewsets.ViewSet):
         code = (request.data.get("code") or "").strip()
 
         # ลบจาก session ก่อน
+        # ✅ แก้ไขตรงนี้
         current = request.session.get("cart_coupons") or {"percent": None, "free": None}
+        
         if code:
+            # ลบเฉพาะคูปองที่มี code ตรงกัน (case insensitive)
             if current.get("percent") and current["percent"].lower() == code.lower():
                 current["percent"] = None
-            if current.get("free") and current["free"].lower() == code.lower():
+            elif current.get("free") and current["free"].lower() == code.lower():
                 current["free"] = None
+            # ถ้าไม่ตรงกับทั้งคู่ ก็ไม่ทำอะไร
         else:
+            # เมื่อไม่ส่ง code มา = ลบทั้งหมด
             current = {"percent": None, "free": None}
+        
+        # อัปเดต session
         request.session["cart_coupons"] = current
         request.session.modified = True
 
-        # ถ้ายังมี code ตรงกับ cart.coupon เดิม ให้เคลียร์เพื่อความเข้ากันได้
+        # ✅ เพิ่ม: จัดการ cart.coupon แบบเดียวกัน
         if code and cart.coupon and cart.coupon.code.lower() == code.lower():
             cart.coupon = None
             cart.save(update_fields=["coupon"])
-        if not code and cart.coupon:
+        elif not code and cart.coupon:
             cart.coupon = None
             cart.save(update_fields=["coupon"])
 
+        # Return ข้อมูลอัปเดต
         data = CartSerializer(cart, context={'request': request}).data
         data.update(self._summary(request, cart))
         return Response(data)
@@ -346,17 +354,18 @@ class CartViewSet(viewsets.ViewSet):
                 free_c.uses_count = F("uses_count") + 1
                 free_c.save(update_fields=["uses_count"])
 
-        # Return order with payment config for frontend
+            qs.delete()
+
+            cart.coupon = None
+            cart.save(update_fields=["coupon"])
+
+        # Return order with payment config
         payment_config = PaymentConfig.objects.filter(is_active=True).first()
         response_data = {
             "order": OrderSerializer(order, context={'request': request}).data,
             "payment_config": PaymentConfigSerializer(payment_config, context={'request': request}).data if payment_config else None,
             "requires_payment": True
         }
-
-        # ✅ เคลียร์คูปองจาก session หลัง checkout
-        request.session["cart_coupons"] = {"percent": None, "free": None}
-        request.session.modified = True
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -393,19 +402,39 @@ class OrderViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        order.payment_slip = payment_slip
-        order.save()
+        # ตรวจสอบและลด stock เมื่ออัปโหลดสลิปสำเร็จ
+        with transaction.atomic():
+            # ตรวจสอบ stock ก่อนลด
+            for order_item in order.items.all():
+                variant = order_item.variant
+                if variant.stock < order_item.quantity:
+                    return Response(
+                        {"detail": f"สินค้า {order_item.product.name} เหลือไม่พอ (เหลือ {variant.stock} ต้องการ {order_item.quantity})"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # ลด stock
+            for order_item in order.items.all():
+                variant = order_item.variant
+                variant.stock = F("stock") - order_item.quantity
+                variant.save(update_fields=["stock"])
+            
+            # บันทึกสลิป (status ยังเป็น PENDING_PAYMENT)
+            order.payment_slip = payment_slip
+            order.save()
 
         return Response(
-            {"detail": "Payment slip uploaded successfully. Awaiting admin verification."},
+            {"detail": "Payment slip uploaded successfully. Stock reduced. Awaiting admin verification."},
             status=status.HTTP_200_OK
         )
+
 
     # POST /api/orders/<order_id>/cancel/
     @action(detail=True, methods=["post"])
     def cancel_order(self, request, pk=None):
         order = get_object_or_404(Order, pk=pk, user=request.user)
         
+        # สามารถยกเลิกได้เฉพาะ PENDING_PAYMENT
         if order.status != Order.Status.PENDING_PAYMENT:
             return Response(
                 {"detail": "Order cannot be cancelled"},
@@ -413,6 +442,13 @@ class OrderViewSet(viewsets.ViewSet):
             )
 
         with transaction.atomic():
+            # คืน stock กลับ (ถ้าเคยลดไปแล้ว)
+            if order.payment_slip:  # ถ้าเคยอัปโหลดสลิปแล้ว = stock เคยถูกลด
+                for order_item in order.items.all():
+                    variant = order_item.variant
+                    variant.stock = F("stock") + order_item.quantity
+                    variant.save(update_fields=["stock"])
+            
             # Restore cart items
             cart = _ensure_cart(request.user)
             for order_item in order.items.all():
@@ -426,14 +462,67 @@ class OrderViewSet(viewsets.ViewSet):
                     cart_item.quantity = F("quantity") + order_item.quantity
                     cart_item.save()
 
-            # Cancel the order
-            order.status = Order.Status.CANCELLED
-            order.save()
+            # คืน coupon usage กลับ
+            if order.coupon:
+                order.coupon.uses_count = F("uses_count") - 1
+                order.coupon.save(update_fields=["uses_count"])
+
+            # ลบ order
+            order.delete()
 
         return Response(
-            {"detail": "Order cancelled successfully. Items restored to cart."},
+            {"detail": "Order cancelled successfully. Items and stock restored."},
             status=status.HTTP_200_OK
         )
+    
+    @action(detail=False, methods=["post"])
+    def cleanup_expired_orders(self, request):
+        """Admin endpoint to cleanup expired orders"""
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Staff access required"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        expired_orders = Order.objects.filter(
+            status=Order.Status.PENDING_PAYMENT,
+            payment_deadline__lt=timezone.now()
+        )
+        
+        count = 0
+        with transaction.atomic():
+            for order in expired_orders:
+                # คืน stock (ถ้าเคยลดไปแล้ว)
+                if order.payment_slip:
+                    for order_item in order.items.all():
+                        variant = order_item.variant
+                        variant.stock = F("stock") + order_item.quantity
+                        variant.save(update_fields=["stock"])
+                
+                # คืนสินค้ากลับ cart
+                cart = _ensure_cart(order.user)
+                for order_item in order.items.all():
+                    cart_item, created = CartItem.objects.get_or_create(
+                        cart=cart,
+                        product=order_item.product,
+                        variant=order_item.variant,
+                        defaults={"quantity": order_item.quantity}
+                    )
+                    if not created:
+                        cart_item.quantity = F("quantity") + order_item.quantity
+                        cart_item.save()
+                
+                # คืน coupon usage
+                if order.coupon:
+                    order.coupon.uses_count = F("uses_count") - 1
+                    order.coupon.save(update_fields=["uses_count"])
+                
+                order.delete()
+                count += 1
+        
+        return Response({
+            "detail": f"Cleaned up {count} expired orders"
+        })
 
 
 class FavoriteViewSet(viewsets.ModelViewSet):

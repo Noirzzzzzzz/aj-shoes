@@ -1,4 +1,4 @@
-// Cart.tsx — Remove checked items & coupons from cart state right after checkout
+// Cart.tsx — Fixed: Remove local pruning and sync from backend instead
 import { useEffect, useMemo, useRef, useState } from "react";
 import Protected from "@/components/Protected";
 import api from "@/api/client";
@@ -104,7 +104,7 @@ function PaymentRequired({
       await api.post(`/api/orders/orders/${order.id}/upload-payment/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      alert("อัปโหลดสลิปเรียบร้อยแล้ว! กรุณารอแอดมินยืนยัน");
+      alert("อัปโหลดสลิปเรียบร้อยแล้ว! กรุณารออดมินยืนยัน");
       onPaymentComplete();
     } catch (e: any) {
       alert(e?.response?.data?.detail || "อัปโหลดสลิปไม่สำเร็จ");
@@ -273,23 +273,6 @@ function CartInner() {
     return parts.join(" • ");
   };
 
-  /* ---------- Local prune after checkout ---------- */
-  function pruneAfterCheckout(checkedIds: number[]) {
-    // ตัดสินค้าที่เลือกทิ้งจากตะกร้า
-    setItems((prev) => prev.filter((it) => !checkedIds.includes(it.id)));
-    // ล้างสถานะการเลือก
-    setSelected((prev) => {
-      const next = { ...prev };
-      checkedIds.forEach((id) => delete next[id]);
-      return next;
-    });
-    // เคลียร์คูปองทั้งหมดจากสถานะตะกร้าฝั่ง UI
-    setAppliedCodes([]);
-    setDiscountAmount(0);
-    setDiscountPercent(0);
-    setFreeShipping(false);
-  }
-
   /* ---------- Sync from backend cart ---------- */
   function syncFromServerCart(data: any) {
     const srvShip = typeof data?.shipping_fee === "number" ? Number(data.shipping_fee) : 50;
@@ -317,12 +300,21 @@ function CartInner() {
       const { data } = await api.get("/api/orders/cart/");
       const list: Item[] = data.items || [];
       setItems(list);
-      const init: Record<number, boolean> = {};
-      list.forEach((it) => (init[it.id] = true));
-      setSelected(init);
+      
+      // เก็บ selection state เดิมไว้ แต่ลบ items ที่ไม่มีแล้ว
+      setSelected(prev => {
+        const next: Record<number, boolean> = {};
+        list.forEach((it) => {
+          // ใช้ selection เดิม หรือ default เป็น true สำหรับ item ใหม่
+          next[it.id] = prev[it.id] !== undefined ? prev[it.id] : true;
+        });
+        return next;
+      });
+      
       syncFromServerCart(data);
     } catch (e) {
       console.error("loadCart error", e);
+      alert("ไม่สามารถโหลดตะกร้าสินค้าได้");
     }
   }
 
@@ -334,6 +326,7 @@ function CartInner() {
       setSelectedAddressId(list.length ? (list.find((a) => a.is_default)?.id ?? list[0].id) : null);
     } catch (e) {
       console.error("loadAddresses error", e);
+      alert("ไม่สามารถโหลดที่อยู่ได้");
     }
   }
 
@@ -344,6 +337,7 @@ function CartInner() {
       setMyFree(data.free_shipping || []);
     } catch (e) {
       console.error("loadMyCoupons error", e);
+      alert("ไม่สามารถโหลดคูปองได้");
     }
   }
 
@@ -365,15 +359,25 @@ function CartInner() {
 
   /* ---------- Cart Operations ---------- */
   async function updateQty(id: number, q: number) {
-    await api.patch(`/api/orders/cart/${id}/`, { quantity: q });
-    const keep = { ...selected };
-    await loadCart();
-    setSelected(keep);
+    try {
+      await api.patch(`/api/orders/cart/${id}/`, { quantity: q });
+      const keep = { ...selected };
+      await loadCart();
+      setSelected(keep);
+    } catch (error) {
+      console.error("Update quantity failed:", error);
+      alert("ไม่สามารถอัปเดตจำนวนสินค้าได้");
+    }
   }
 
   async function removeItem(id: number) {
-    await api.delete(`/api/orders/cart/${id}/`);
-    await loadCart();
+    try {
+      await api.delete(`/api/orders/cart/${id}/`);
+      await loadCart();
+    } catch (error) {
+      console.error("Remove item failed:", error);
+      alert("ไม่สามารถลบสินค้าได้");
+    }
   }
 
   /* ---------- Coupon Operations ---------- */
@@ -421,17 +425,37 @@ function CartInner() {
     try {
       let response;
 
+      // ✅ Workaround: ใช้ apply-coupon กับ empty array แทน
       if (code) {
-        response = await api.post("/api/orders/cart/remove-coupon/", { code });
+        // ลบคูปองที่ระบุ - ส่ง codes ที่เหลือ
+        const remainingCodes = appliedCodes.filter(c => c !== code);
+        response = await api.post("/api/orders/cart/apply-coupon/", { 
+          coupon_codes: remainingCodes 
+        });
       } else {
-        response = await api.post("/api/orders/cart/remove-coupon/");
+        // ลบคูปองทั้งหมด - ส่ง empty array
+        response = await api.post("/api/orders/cart/apply-coupon/", { 
+          coupon_codes: [] 
+        });
       }
+
+      console.log("Remove coupon response:", response.data);
 
       if (response.data) {
         syncFromServerCart(response.data);
+        console.log("Synced from server:", {
+          appliedCodes: response.data.applied_coupons?.map((c: { code: string }) => c.code),
+          discountAmount: response.data.discount_amount,
+          freeShipping: response.data.free_shipping
+        });
+      } else {
+        console.log("No data returned, reloading cart");
+        await loadCart();
       }
     } catch (e: any) {
       console.error("Remove coupon failed:", e);
+      alert("ไม่สามารถลบคูปองได้");
+      await loadCart();
     } finally {
       setRemovingCoupon(null);
     }
@@ -454,8 +478,8 @@ function CartInner() {
 
       const res = await api.post("/api/orders/cart/checkout/", payload);
 
-      // ✅ ตัดสินค้าที่เลือก + เคลียร์คูปองใน UI ทันที (ไม่รอ reload)
-      pruneAfterCheckout(checkedIds);
+      // ✅ ไม่ลบ items ใน UI ทันที แต่ให้ sync จาก backend แทน
+      await loadCart(); // โหลดข้อมูลตะกร้าใหม่จาก backend
 
       if (res.data?.requires_payment) {
         setPaymentOrder(res.data.order);
@@ -476,24 +500,21 @@ function CartInner() {
     }
   }
 
-  const onPaymentComplete = () => {
+  const onPaymentComplete = async () => {
     setShowPayment(false);
     setPaymentOrder(null);
     setPaymentConfig(null);
-    // เผื่อ UI ไหนยังค้าง ล้างคูปองอีกรอบก่อนออก
-    setAppliedCodes([]);
-    setDiscountAmount(0);
-    setDiscountPercent(0);
-    setFreeShipping(false);
+    // โหลดข้อมูลตะกร้าใหม่จาก backend เพื่ออัปเดท UI
+    await loadCart();
     window.location.href = "/orders";
   };
 
-  const onPaymentCancel = () => {
+  const onPaymentCancel = async () => {
     setShowPayment(false);
     setPaymentOrder(null);
     setPaymentConfig(null);
     // ยกเลิกการชำระเงิน → ดึงตะกร้าปัจจุบันจากเซิร์ฟเวอร์ (เผื่อ backend คืนสินค้า/คูปอง)
-    loadCart();
+    await loadCart();
   };
 
   /* ---------- UI ---------- */
@@ -794,7 +815,6 @@ function CartInner() {
       )}
 
       {/* Payment Modal */}
-      {showPicker && null}
       {showPayment && paymentOrder && paymentConfig && (
         <PaymentRequired
           order={paymentOrder}
